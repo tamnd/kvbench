@@ -89,21 +89,20 @@ func (e *eng) Open(_ context.Context, cfg engine.Config) error {
 }
 
 func (e *eng) Get(_ context.Context, key []byte) ([]byte, bool, error) {
-	var out []byte
-	var found bool
-	err := e.db.View(func(t *tkv.Txn) error {
-		v, err := t.GetCopy(key)
-		if errors.Is(err, tkv.ErrNotFound) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		out = v
-		found = true
-		return nil
-	})
-	return out, found, err
+	// Use kv's top-level Get, the engine's lightest point read: an owned-copy lookup at the latest
+	// committed snapshot with no transaction to begin and discard and no snapshot watermark to
+	// register. A single benchmark Get does not need snapshot isolation across keys, so the heavier
+	// View transaction the harness used to wrap this only added per-op machinery that hid kv's real
+	// point-read cost. This matches how the pebble adapter calls pebble's direct Get; bbolt rides a
+	// View only because bbolt has no transaction-free read.
+	v, err := e.db.Get(key)
+	if errors.Is(err, tkv.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return v, true, nil
 }
 
 func (e *eng) Put(_ context.Context, key, value []byte) error {
