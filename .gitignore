@@ -1,0 +1,11 @@
+/bin/
+/dist/
+/results/
+/kvbench
+*.out
+*.test
+*.prof
+.DS_Store
+
+# Rust helper build output for the subprocess engines.
+/rust/target/

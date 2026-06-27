@@ -1,0 +1,125 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel an in-flight run when a branch is pushed again.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Build and test on Linux and macOS. gofmt and vet run here too so a
+  # formatting slip fails fast on both platforms. The default build is pure Go
+  # (CGO_ENABLED=0); the cgo-only adapters (LMDB) are behind the cgo_engines tag
+  # and are not compiled here, so no C toolchain or system library is needed.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -s -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt -s -w:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        env:
+          CGO_ENABLED: "0"
+        run: go vet ./...
+      - name: build
+        env:
+          CGO_ENABLED: "0"
+        run: go build ./...
+      # The race detector requires cgo; the build above already proves the
+      # pure-Go path compiles.
+      - name: test
+        env:
+          CGO_ENABLED: "1"
+        run: go test -race -count=1 ./...
+
+  # End-to-end smoke: build the runner and drive a tiny sweep over the in-memory
+  # floor and ceilings plus the three kv cores. This is the gate that matters for
+  # a benchmark repo: a refactor that keeps every unit test green but breaks the
+  # harness wiring shows up here as a failed run.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: bench smoke
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -o bin/kvbench ./cmd/kvbench
+          ./bin/kvbench run \
+            --engines devnull,swiss,otter,faster,kv-btree,kv-lsm,kv-betree \
+            --workloads readrandom,fillrandom \
+            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --out results/smoke
+
+  # golangci-lint bundles staticcheck, govet, ineffassign, errcheck, unused and
+  # more, so it is the main quality gate.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  # Scan the module and its dependencies for known vulnerabilities.
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  # Confirm go.mod and go.sum are tidy: a PR that adds an import without running
+  # go mod tidy fails here instead of breaking a later release.
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: go mod tidy is clean
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum

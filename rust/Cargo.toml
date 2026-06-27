@@ -1,0 +1,18 @@
+[package]
+name = "kvbench-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Subprocess helper that drives Rust key/value engines for kvbench"
+
+[[bin]]
+name = "kvbench-rs"
+path = "src/main.rs"
+
+[dependencies]
+redb = "2"
+sled = "0.34"
+fjall = "2"
+
+[profile.release]
+opt-level = 3
+lto = true

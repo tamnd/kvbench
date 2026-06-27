@@ -1,10 +1,12 @@
 // Package kv adapts github.com/tamnd/kv, the single-file embedded Go store this
-// whole benchmark exists to keep honest. kv ships two engine cores behind one
-// API, so it registers twice: kv-btree (the in-place B+tree default, tuned for
-// read latency) and kv-lsm (the log-structured core, tuned for write
-// throughput). Both are pure Go with no cgo, and both write a single .kv file
-// plus a WAL sidecar, so they sit in the same single-file class as bbolt and
-// lmdb.
+// whole benchmark exists to keep honest. kv ships three engine cores behind one
+// API, so it registers three times: kv-btree (the in-place B+tree default, tuned
+// for read latency), kv-lsm (the log-structured core, tuned for write
+// throughput), and kv-betree (the unified Bε-tree core from the 2059 redesign,
+// off the default path inside kv and exercised here only because it is the core
+// under active work). All three are pure Go with no cgo, and all three write a
+// single .kv file plus a WAL sidecar, so they sit in the same single-file class
+// as bbolt and lmdb.
 //
 // There is no home-field advantage here. kv goes through the exact same Engine
 // SPI as every other store and gets no special path in the driver.
@@ -22,6 +24,7 @@ import (
 func init() {
 	engine.Register("kv-btree", func() engine.Engine { return &eng{kind: tkv.BTree} })
 	engine.Register("kv-lsm", func() engine.Engine { return &eng{kind: tkv.LSM} })
+	engine.Register("kv-betree", func() engine.Engine { return &eng{kind: tkv.Beta} })
 }
 
 type eng struct {
@@ -30,16 +33,32 @@ type eng struct {
 }
 
 func (e *eng) name() string {
-	if e.kind == tkv.LSM {
+	switch e.kind {
+	case tkv.LSM:
 		return "kv-lsm"
+	case tkv.Beta:
+		return "kv-betree"
+	default:
+		return "kv-btree"
 	}
-	return "kv-btree"
 }
 
 func (e *eng) Meta() engine.Meta {
 	fam := engine.FamilyBTree
-	if e.kind == tkv.LSM {
+	switch e.kind {
+	case tkv.LSM:
 		fam = engine.FamilyLSM
+	case tkv.Beta:
+		// The Bε-tree is a B-tree with per-node update buffers, so it sits in the
+		// btree family for the capability matrix; its distinct behavior shows up in
+		// the numbers, not the family label.
+		fam = engine.FamilyBTree
+	}
+	asterisks := []engine.Asterisk{
+		{Code: "scan-overshoot", Note: "kv's Scan uses the zero-copy streaming cursor (NewScanCursor), which pulls entries in geometric batches (8, 16, 32, ... up to 256) lazily as the driver advances and stops once the scan closes, so a bounded scan resolves only the entries read plus at most the unread remainder of its last batch, not the whole tail. The scan numbers (readseq, ycsb-e) carry that small fixed-batch overshoot, no more. This supersedes the old eager-materialize behavior: kv materialized the full forward range at construction before it grew a streaming cursor, and any result file that still cites an eager-scan asterisk predates the switch."},
+	}
+	if e.kind == tkv.Beta {
+		asterisks = append(asterisks, engine.Asterisk{Code: "betree-preview", Note: "kv-betree is the unified Bε-tree core from the 2059 redesign. It is off the default path inside kv and is benchmarked here only because it is the core under active work; its numbers are a moving target and do not describe the shipped kv-btree or kv-lsm cores a user gets by default."})
 	}
 	return engine.Meta{
 		Name: e.name(), Family: fam, Mode: engine.ModeInProc,
@@ -48,18 +67,15 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true, Transactions: true,
 			OnlineBackup: true, SingleFile: true, PureNoCgo: true,
 		},
-		Asterisks: []engine.Asterisk{
-			{Code: "scan-overshoot", Note: "kv's Scan uses the zero-copy streaming cursor (NewScanCursor), which pulls entries in geometric batches (8, 16, 32, ... up to 256) lazily as the driver advances and stops once the scan closes, so a bounded scan resolves only the entries read plus at most the unread remainder of its last batch, not the whole tail. The scan numbers (readseq, ycsb-e) carry that small fixed-batch overshoot, no more. This supersedes the old eager-materialize behavior: kv materialized the full forward range at construction before it grew a streaming cursor, and any result file that still cites an eager-scan asterisk predates the switch."},
-			{Code: "off-eq-full", Note: "kv cannot express durability OFF through its public API: WithSynchronous(SyncOff) sets Options.Sync to 0, which db.Options.sync() reads as unset and maps to SyncFull. So the OFF cell measures the same per-commit fsync path as FULL, not a no-fsync path. The fix belongs in kv (give SyncOff a non-zero value, or carry a 'set' flag); until then OFF and FULL are the same run."},
-		},
+		Asterisks: asterisks,
 	}
 }
 
 // sync maps the kvbench durability contract onto kv's WAL sync levels. NORMAL
 // fsyncs at checkpoint and periodically (the WAL-mode default); FULL fsyncs every
-// commit. OFF asks for SyncOff, but see the off-eq-full asterisk: kv currently
-// folds SyncOff back into SyncFull because its value collides with the unset
-// default, so the OFF and FULL cells exercise the same path until kv is fixed.
+// commit; OFF asks for SyncOff, kv's no-fsync path, so the OFF cell measures kv
+// with the durability barrier removed, the same shape every other engine's OFF
+// cell measures.
 func syncLevel(s string) tkv.Sync {
 	switch s {
 	case "OFF":
