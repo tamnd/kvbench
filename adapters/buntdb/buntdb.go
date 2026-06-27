@@ -157,7 +157,6 @@ type iter struct {
 	ch   chan kv
 	done chan struct{}
 	cur  kv
-	open bool
 }
 
 func (i *iter) Next() bool {

@@ -36,7 +36,7 @@ func TestCeilingOracle(t *testing.T) {
 			if err := e.Open(ctx, engine.Config{}); err != nil {
 				t.Fatalf("open: %v", err)
 			}
-			defer e.Close(ctx)
+			defer func() { _ = e.Close(ctx) }()
 
 			oracle := map[string][]byte{}
 
@@ -97,7 +97,7 @@ func TestCeilingBatch(t *testing.T) {
 			if err := e.Open(ctx, engine.Config{}); err != nil {
 				t.Fatalf("open: %v", err)
 			}
-			defer e.Close(ctx)
+			defer func() { _ = e.Close(ctx) }()
 
 			b := e.NewBatch()
 			for i := 0; i < n; i++ {
@@ -129,7 +129,7 @@ func TestDevnullFloor(t *testing.T) {
 	if err := e.Open(ctx, engine.Config{}); err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer e.Close(ctx)
+	defer func() { _ = e.Close(ctx) }()
 
 	if err := e.Put(ctx, key(1), val(1)); err != nil {
 		t.Fatalf("put: %v", err)

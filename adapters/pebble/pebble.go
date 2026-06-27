@@ -56,7 +56,7 @@ func (e *eng) Get(_ context.Context, key []byte) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	out := append([]byte(nil), v...)
-	closer.Close()
+	_ = closer.Close()
 	return out, true, nil
 }
 
@@ -105,7 +105,7 @@ func (b *batch) Delete(k []byte) { _ = b.b.Delete(k, nil) }
 func (b *batch) Len() int        { return int(b.b.Count()) }
 func (b *batch) Commit(_ context.Context) error {
 	err := b.e.db.Apply(b.b, b.e.wo)
-	b.b.Close()
+	_ = b.b.Close()
 	return err
 }
 
