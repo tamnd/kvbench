@@ -91,7 +91,7 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		r.Error = "mkdir: " + err.Error()
 		return r
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	cfg := engine.Config{
 		Dir:         dir,
@@ -104,7 +104,7 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		r.Error = "open: " + err.Error()
 		return r
 	}
-	defer eng.Close(ctx)
+	defer func() { _ = eng.Close(ctx) }()
 
 	// ---- LOAD PHASE (timed separately, never folded into steady state) ----
 	loadStart := time.Now()
@@ -253,7 +253,7 @@ func runMeasured(ctx context.Context, eng engine.Engine, c CellConfig) (*hdr.His
 							_ = it.Value()
 							n++
 						}
-						it.Close()
+						_ = it.Close()
 					}
 					reads.Add(1)
 				}

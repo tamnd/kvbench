@@ -139,11 +139,14 @@ func cmdRun(args []string) {
 	if f.out == "" {
 		f.out = fmt.Sprintf("results/run-%d", f.seed)
 	}
-	os.MkdirAll(f.out, 0o755)
+	if err := os.MkdirAll(f.out, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "create out dir %q: %v\n", f.out, err)
+		os.Exit(1)
+	}
 
 	runID := fmt.Sprintf("run-%d", f.seed)
 	dataRoot, _ := os.MkdirTemp("", "kvbench-data-")
-	defer os.RemoveAll(dataRoot)
+	defer func() { _ = os.RemoveAll(dataRoot) }()
 
 	ctx := context.Background()
 	var all []harness.Result
@@ -267,7 +270,9 @@ func writeResult(dir string, r harness.Result) {
 		r.Engine.Name, r.Workload.Name, r.Workload.Regime, r.Workload.ValueBytes, r.Workload.Concurrency, r.Workload.Durability)
 	name = strings.ReplaceAll(name, "/", "_")
 	b, _ := json.MarshalIndent(r, "", "  ")
-	os.WriteFile(dir+"/"+name, b, 0o644)
+	if err := os.WriteFile(dir+"/"+name, b, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "write result %q: %v\n", name, err)
+	}
 }
 
 // ---- helpers ----

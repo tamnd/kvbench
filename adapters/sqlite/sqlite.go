@@ -48,7 +48,7 @@ func (e *eng) Open(_ context.Context, cfg engine.Config) error {
 	}
 	db.SetMaxOpenConns(1) // single connection keeps WAL writer semantics simple
 	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS kv (k BLOB PRIMARY KEY, v BLOB) WITHOUT ROWID`); err != nil {
-		db.Close()
+		_ = db.Close()
 		return err
 	}
 	e.db = db
@@ -119,12 +119,12 @@ func (b *batch) Commit(ctx context.Context) error {
 	}
 	put, err := tx.PrepareContext(ctx, `INSERT INTO kv(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	del, err := tx.PrepareContext(ctx, `DELETE FROM kv WHERE k=?`)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	for _, o := range b.ops {
@@ -134,7 +134,7 @@ func (b *batch) Commit(ctx context.Context) error {
 			_, err = put.ExecContext(ctx, o.k, o.v)
 		}
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return err
 		}
 	}

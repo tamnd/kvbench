@@ -89,9 +89,9 @@ jobs:
           go-version-file: go.mod
           check-latest: true
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.12.1
 
   # Scan the module and its dependencies for known vulnerabilities.
   govulncheck:

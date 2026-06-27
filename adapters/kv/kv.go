@@ -178,7 +178,7 @@ func (b *batch) Delete(k []byte) {
 func (b *batch) Len() int { return len(b.ops) }
 func (b *batch) Commit(_ context.Context) error {
 	wb := b.e.db.NewWriteBatch(len(b.ops) + 1)
-	defer wb.Close()
+	defer func() { _ = wb.Close() }()
 	for _, o := range b.ops {
 		if o.del {
 			if err := wb.Delete(o.k); err != nil {
