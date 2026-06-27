@@ -26,7 +26,10 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true, Transactions: true,
 			SingleFile: true, PureNoCgo: true,
 		},
-		Asterisks: []engine.Asterisk{{Code: "in-mem-index", Note: "the whole dataset lives in memory with an append-only file for durability, so reads are RAM-speed and space is measured on the AOF"}},
+		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the default SyncPolicy is EverySecond: the append-only file is fsynced about once a second, not on every commit, so the out-of-box write number is the deferred-sync path"},
+			{Code: "in-mem-index", Note: "the whole dataset lives in memory with an append-only file for durability, so reads are RAM-speed and space is measured on the AOF"},
+		},
 	}
 }
 

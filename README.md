@@ -90,7 +90,10 @@ kvbench run \
 kvbench report --in results/mine --md
 ```
 
-Run `kvbench run` with no flags to sweep every built-in engine across every workload.
+Run `kvbench run` with no flags to sweep every built-in engine across every workload at each
+engine's shipped durability (`--durability DEFAULT`). For the fixed, reproducible public matrix
+that anyone can run and verify, use `make bench-public`; the profile and the fairness model are in
+[docs/public-benchmark.md](docs/public-benchmark.md).
 
 ## Workloads
 
@@ -149,6 +152,15 @@ Every engine declares its family, mode, capabilities, and any asterisks (for exa
 engine whose NORMAL durability is really a full fsync, or one reached through cgo). The
 asterisks ride along in every result so a number never ships detached from the caveat that
 qualifies it.
+
+Durability is the place fairness is easiest to get wrong, because the same label means
+different things to different engines: bbolt at NORMAL fsyncs every commit while kv at NORMAL
+does not. So the default run uses `--durability DEFAULT`, which opens each engine exactly as its
+library ships and attaches a `default-durability` asterisk stating what that default actually
+does. That is the honest out-of-box comparison; `--durability OFF` takes the per-commit barrier
+out of every engine to compare write paths directly, and `--durability FULL` measures the
+durability tax on the disk. The per-engine default table is in
+[docs/public-benchmark.md](docs/public-benchmark.md).
 
 ## Layout
 

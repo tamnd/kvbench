@@ -26,6 +26,7 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true,
 			SingleFile: false, PureNoCgo: true,
 		},
+		Asterisks: []engine.Asterisk{{Code: "default-durability", Note: "the default WriteOptions leave Sync=false: the log is written but not fsynced per commit, so the out-of-box write number is the async path"}},
 	}
 }
 

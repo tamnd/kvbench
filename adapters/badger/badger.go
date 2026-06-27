@@ -24,6 +24,7 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true, Transactions: true,
 			SingleFile: false, PureNoCgo: true,
 		},
+		Asterisks: []engine.Asterisk{{Code: "default-durability", Note: "DefaultOptions ship SyncWrites=false: the default writes to the value log and fsyncs in the background, not per commit, so its out-of-box write number stays fast"}},
 	}
 }
 

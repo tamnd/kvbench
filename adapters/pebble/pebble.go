@@ -24,6 +24,7 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true,
 			SingleFile: false, PureNoCgo: true,
 		},
+		Asterisks: []engine.Asterisk{{Code: "default-durability", Note: "the default does not fsync the WAL per commit; pebble flushes the WAL in the background, so the out-of-box durability trades a window of recent writes for write speed"}},
 	}
 }
 
