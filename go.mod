@@ -9,7 +9,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.9.2
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/syndtr/goleveldb v1.0.0
-	github.com/tamnd/kv v0.2.1-0.20260627083037-a6a4308eff06
+	github.com/tamnd/kv v0.2.1-0.20260627085347-1c21f8ab59e7
 	github.com/tidwall/buntdb v1.3.2
 	go.etcd.io/bbolt v1.4.3
 	modernc.org/sqlite v1.52.0
