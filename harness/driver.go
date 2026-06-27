@@ -177,7 +177,10 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		}
 	}
 
-	if !meta.Caps.Durable && c.Durability != "OFF" {
+	// DEFAULT and OFF request no specific durability, so a non-durable engine is
+	// simply running as it ships and needs no caveat. NORMAL and FULL are explicit
+	// durability requests this engine cannot honor, which the reader must know.
+	if !meta.Caps.Durable && (c.Durability == "NORMAL" || c.Durability == "FULL") {
 		r.Asterisks = append(r.Asterisks, engine.Asterisk{Code: "no-fsync", Note: "engine cannot fsync; durability requested but not delivered"})
 	}
 	return r

@@ -55,6 +55,7 @@ func (e *eng) Meta() engine.Meta {
 		fam = engine.FamilyBTree
 	}
 	asterisks := []engine.Asterisk{
+		{Code: "default-durability", Note: "the default maps to kv's NORMAL WAL mode: fsync at checkpoint and on a periodic timer, no fsync per commit, so a crash can lose the last few commits but cannot corrupt the store"},
 		{Code: "scan-overshoot", Note: "kv's Scan uses the zero-copy streaming cursor (NewScanCursor), which pulls entries in geometric batches (8, 16, 32, ... up to 256) lazily as the driver advances and stops once the scan closes, so a bounded scan resolves only the entries read plus at most the unread remainder of its last batch, not the whole tail. The scan numbers (readseq, ycsb-e) carry that small fixed-batch overshoot, no more. This supersedes the old eager-materialize behavior: kv materialized the full forward range at construction before it grew a streaming cursor, and any result file that still cites an eager-scan asterisk predates the switch."},
 	}
 	if e.kind == tkv.Beta {

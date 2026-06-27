@@ -63,7 +63,7 @@ type Config struct {
 	Dir         string            // clean data directory for embedded modes
 	Addr        string            // server address for network mode
 	Profile     string            // "default" | "tuned"
-	Synchronous string            // "OFF" | "NORMAL" | "FULL"
+	Synchronous string            // "DEFAULT" | "OFF" | "NORMAL" | "FULL"
 	CacheBytes  int64             // target cache size for the tuned profile
 	ValueBytes  int               // hint for value sizing
 	Extra       map[string]string // engine-specific tuning (from the profile file)

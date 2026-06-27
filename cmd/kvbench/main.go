@@ -68,7 +68,7 @@ run flags:
   --engines a,b,c   engines to run (default: all built-in)
   --workloads a,b   workloads (default: all)
   --regimes a,b     cache-resident,out-of-cache (default: cache-resident)
-  --durability a,b  OFF,NORMAL,FULL (default: NORMAL)
+  --durability a,b  DEFAULT,OFF,NORMAL,FULL (default: DEFAULT, each engine as it ships)
   --values a,b      value sizes in bytes (default: 1024)
   --conc a,b        concurrency levels (default: 8)
   --cardinality N   keys to load (default: 100000)
@@ -121,7 +121,7 @@ type runFlags struct {
 func cmdRun(args []string) {
 	f := runFlags{
 		regimes:     []string{"cache-resident"},
-		durability:  []string{"NORMAL"},
+		durability:  []string{"DEFAULT"},
 		values:      []int{1024},
 		conc:        []int{8},
 		cardinality: 100000,

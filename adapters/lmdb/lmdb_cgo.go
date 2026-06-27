@@ -28,6 +28,7 @@ func (e *eng) Meta() engine.Meta {
 			OnlineBackup: true, SingleFile: true, PureNoCgo: false,
 		},
 		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the default does a full sync on every commit (no MDB_NOSYNC and no NoMetaSync), so the out-of-box durability is fsync-per-commit like bbolt, the strongest in this field"},
 			{Code: "cgo-tax", Note: "reached via cgo; the call-boundary cost is included, not subtracted"},
 			{Code: "normal-nometasync", Note: "NORMAL maps to LMDB NoMetaSync: data pages are fsynced per commit, the meta page is not, so it is more durable than the no-fsync LSMs and less than a full sync"},
 		},

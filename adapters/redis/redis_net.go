@@ -46,6 +46,7 @@ func (e *eng) Meta() engine.Meta {
 			SingleFile: false, PureNoCgo: true,
 		},
 		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the default is AOF appendonly with appendfsync=everysec: the append log is fsynced about once a second, the Redis out-of-box durability default, not per command"},
 			{Code: "network-hop", Note: "every op crosses a unix socket to a separate server process; the round-trip is in the number, which is the honest cost of a networked store"},
 			{Code: "unordered", Note: "plain string keys have no sorted iteration, so the scan workloads skip redis"},
 		},

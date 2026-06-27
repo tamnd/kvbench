@@ -28,7 +28,10 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true, Transactions: true,
 			OnlineBackup: true, SingleFile: true, PureNoCgo: true,
 		},
-		Asterisks: []engine.Asterisk{{Code: "sql-overhead", Note: "KV ops go through SQL prepared statements; reflects SQLite-as-KV, not raw btree"}},
+		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "opened in WAL with synchronous=NORMAL, the WAL-recommended default: the WAL is fsynced at checkpoints rather than on every commit, so the out-of-box write number is not fsync-per-commit"},
+			{Code: "sql-overhead", Note: "KV ops go through SQL prepared statements; reflects SQLite-as-KV, not raw btree"},
+		},
 	}
 }
 

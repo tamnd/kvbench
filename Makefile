@@ -5,7 +5,7 @@
 GO ?= go
 PKG ?= ./...
 
-.PHONY: build test race lint vet fmt fmt-check tidy vuln bench smoke cgo clean
+.PHONY: build test race lint vet fmt fmt-check tidy vuln bench bench-public smoke cgo clean
 
 build:
 	CGO_ENABLED=0 $(GO) build ./...
@@ -51,6 +51,22 @@ smoke: bin/kvbench
 		--workloads readrandom,fillrandom \
 		--durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
 		--out results/smoke
+
+# The pinned public profile: the recognized YCSB A-F and db_bench workloads at a
+# fixed seed and fixed sizes, every engine at its shipped durability (DEFAULT), so
+# anyone can reproduce the same matrix and verify the numbers. The generators are
+# deterministic and the dependency versions are locked in go.sum, so the only
+# variable left is the hardware. See docs/public-benchmark.md for the full
+# definition and how to read the result. Override OUT= to pick a results dir.
+PUBLIC_OUT ?= results/public
+bench-public: bin/kvbench
+	./bin/kvbench run \
+		--workloads fillseq,fillrandom,overwrite,readrandom,readseq,deleterandom,ycsb-a,ycsb-b,ycsb-c,ycsb-d,ycsb-e,ycsb-f \
+		--regimes cache-resident \
+		--durability DEFAULT \
+		--values 1024 --conc 8 --cardinality 100000 --ops 200000 --reps 3 --seed 42 \
+		--out $(PUBLIC_OUT)
+	./bin/kvbench report --in $(PUBLIC_OUT) --md
 
 # Build the cgo-only adapters too, so that path keeps compiling.
 cgo:

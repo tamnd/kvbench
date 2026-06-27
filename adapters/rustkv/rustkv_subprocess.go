@@ -86,6 +86,7 @@ func (e *eng) Meta() engine.Meta {
 			SingleFile: e.name == "redb", PureNoCgo: false,
 		},
 		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the helper opens each Rust store at its NORMAL profile for the default, which leaves per-commit fsync to the store's own batching rather than forcing a sync on every write"},
 			{Code: "subprocess-hop", Note: "every op crosses a pipe to a separate Rust process; the framing and round-trip cost is in the number, which is the honest cost of driving a non-Go engine this way"},
 		},
 	}
@@ -97,7 +98,9 @@ func (e *eng) Open(_ context.Context, cfg engine.Config) error {
 		return errors.New("kvbench-rs not found on PATH")
 	}
 	sync := cfg.Synchronous
-	if sync == "" {
+	// The Rust helper understands OFF/NORMAL/FULL. DEFAULT (and an empty value)
+	// mean "as the store ships", which maps to the helper's NORMAL profile.
+	if sync == "" || sync == "DEFAULT" {
 		sync = "NORMAL"
 	}
 	cmd := exec.Command(bin, "--engine", e.name, "--dir", cfg.Dir, "--sync", sync)

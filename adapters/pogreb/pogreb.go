@@ -27,7 +27,10 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: false, AtomicBatch: false, Durable: true,
 			SingleFile: false, PureNoCgo: true,
 		},
-		Asterisks: []engine.Asterisk{{Code: "unordered", Note: "hash index, no sorted iteration; scan workloads are not supported and report an error instead of a number"}},
+		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the default fsyncs the log on a background interval, not per put, so the out-of-box write number reflects deferred durability"},
+			{Code: "unordered", Note: "hash index, no sorted iteration; scan workloads are not supported and report an error instead of a number"},
+		},
 	}
 }
 

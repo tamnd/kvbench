@@ -26,7 +26,10 @@ func (e *eng) Meta() engine.Meta {
 			Ordered: true, AtomicBatch: true, Durable: true, Transactions: true,
 			OnlineBackup: true, SingleFile: true, PureNoCgo: true,
 		},
-		Asterisks: []engine.Asterisk{{Code: "normal-is-full", Note: "bbolt fsyncs every commit and has no periodic-flush mode, so NORMAL durability behaves exactly like FULL here"}},
+		Asterisks: []engine.Asterisk{
+			{Code: "default-durability", Note: "the default fsyncs the data file on every commit; bbolt has no async mode, so its out-of-box durability is the strongest and the slowest on writes in this field"},
+			{Code: "normal-is-full", Note: "bbolt fsyncs every commit and has no periodic-flush mode, so NORMAL durability behaves exactly like FULL here"},
+		},
 	}
 }
 
