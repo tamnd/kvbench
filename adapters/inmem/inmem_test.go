@@ -3,6 +3,7 @@ package inmem
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/tamnd/kvbench/engine"
@@ -11,7 +12,7 @@ import (
 // ceilingEngines is every in-memory ceiling that actually stores data, so the
 // oracle test below can run the same script against each. devnull is excluded
 // because it stores nothing by design and is checked on its own.
-var ceilingEngines = []string{"faster", "otter", "swiss"}
+var ceilingEngines = []string{"faster", "f2", "otter", "swiss"}
 
 func key(i int) []byte { return []byte(fmt.Sprintf("key:%08d", i)) }
 func val(i int) []byte { return []byte(fmt.Sprintf("val-%08d-payload", i)) }
@@ -144,6 +145,68 @@ func TestDevnullFloor(t *testing.T) {
 	}
 	if err := b.Commit(ctx); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestF2Concurrent drives f2 the way the harness does at conc=N: many writers
+// filling and overwriting shards while many readers probe the same keyspace,
+// with -race on. It guards the lock-free read path, the read-copy-update on
+// overwrite, and the table swap a grow performs, none of which the single-thread
+// oracle above can stress. It asserts liveness rather than a point-in-time
+// value, because a key a reader sees may be one a writer is still rewriting; the
+// race detector catches the bug this test exists to catch.
+func TestF2Concurrent(t *testing.T) {
+	ctx := context.Background()
+	e, err := engine.New("f2")
+	if err != nil {
+		t.Fatalf("new f2: %v", err)
+	}
+	if err := e.Open(ctx, engine.Config{}); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = e.Close(ctx) }()
+
+	const (
+		writers = 4
+		readers = 4
+		keys    = 20000
+		rounds  = 3
+	)
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(shard int) {
+			defer wg.Done()
+			for r := 0; r < rounds; r++ {
+				for i := shard; i < keys; i += writers {
+					if err := e.Put(ctx, key(i), val(i+r*1_000_000)); err != nil {
+						t.Errorf("put: %v", err)
+						return
+					}
+				}
+			}
+		}(w)
+	}
+	for r := 0; r < readers; r++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for n := 0; n < keys*rounds; n++ {
+				_, _, err := e.Get(ctx, key(n%keys))
+				if err != nil {
+					t.Errorf("get: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	// After every writer's last round, every key reads back present.
+	for i := 0; i < keys; i++ {
+		if _, found, _ := e.Get(ctx, key(i)); !found {
+			t.Fatalf("key %d missing after concurrent fill", i)
+		}
 	}
 }
 
