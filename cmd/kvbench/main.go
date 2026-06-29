@@ -23,6 +23,7 @@ import (
 	_ "github.com/tamnd/kvbench/adapters/badger"
 	_ "github.com/tamnd/kvbench/adapters/bbolt"
 	_ "github.com/tamnd/kvbench/adapters/buntdb"
+	_ "github.com/tamnd/kvbench/adapters/f2"
 	_ "github.com/tamnd/kvbench/adapters/goleveldb"
 	_ "github.com/tamnd/kvbench/adapters/inmem"
 	_ "github.com/tamnd/kvbench/adapters/kv"

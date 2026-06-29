@@ -126,18 +126,21 @@ Throughput in ops/s.
 | pogreb | 1,710,000 | 170,000 | durable |
 | buntdb | 1,430,000 | 251,000 | durable |
 | bbolt | 871,000 | 45,000 | durable |
-| kv-lsm | 780,000 | 99,000 | durable |
-| kv-btree | 766,000 | 22,000 | durable |
 | goleveldb | 604,000 | 117,000 | durable |
-| kv-betree | 584,000 | 6,100 | durable |
 | badger | 571,000 | 168,000 | durable |
 | pebble | 481,000 | 155,000 | durable |
 | sqlite | 51,000 | 28,000 | durable |
 
+This table predates kv's consolidation to its single f2 core, so the old kv-btree, kv-lsm, and
+kv-betree rows are gone: kv ships one engine now, a latch-free hash-log, and it is unordered.
+Its in-memory read and write path is bracketed by the two ceiling rows that replace them, faster
+(the same store one generation back, behind a single RWMutex) and f2 (the latch-free core), and
+the durable single-file `kv` engine gets re-measured on this machine in the next baseline pass.
+
 The in-memory read ceiling here is about 8.7M ops/s (swiss); the fastest durable engine reads
-at roughly a ninth of that, and the gap is the price of an ordered, persistent, transactional
-structure over a bare hash table. devnull at 14.7M is the harness floor no engine can beat in
-this harness, because the rest of a cell is generating the op and recording its latency.
+at roughly a ninth of that, and the gap is the price of a persistent, transactional structure
+over a bare hash table. devnull at 14.7M is the harness floor no engine can beat in this harness,
+because the rest of a cell is generating the op and recording its latency.
 
 The write column is the no-fsync write-path cost. Turn durability up to FULL and every durable
 engine collapses toward the disk's fsync rate, a few hundred commits a second on this machine,
@@ -167,7 +170,7 @@ durability tax on the disk. The per-engine default table is in
 ```
 engine/      the adapter SPI and registry, imports no concrete engine
 adapters/    one package per engine, the only place engine knowledge lives
-adapters/inmem/ the devnull floor and the in-memory ceilings (swiss, otter, faster)
+adapters/inmem/ the devnull floor and the in-memory ceilings (swiss, otter, faster, f2)
 rust/        the kvbench-rs helper for subprocess engines (redb, sled, fjall)
 workload/    deterministic operation generators (YCSB + db_bench)
 hdr/         HDR histogram with coordinated-omission correction
