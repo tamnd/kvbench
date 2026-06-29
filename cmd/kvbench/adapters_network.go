@@ -9,6 +9,7 @@ package main
 import (
 	_ "github.com/tamnd/kvbench/adapters/aki"
 	_ "github.com/tamnd/kvbench/adapters/dragonfly"
+	_ "github.com/tamnd/kvbench/adapters/kvredis"
 	_ "github.com/tamnd/kvbench/adapters/redis"
 	_ "github.com/tamnd/kvbench/adapters/valkey"
 )
