@@ -7,4 +7,5 @@ package main
 import (
 	_ "github.com/tamnd/kvbench/adapters/libmdbx"
 	_ "github.com/tamnd/kvbench/adapters/lmdb"
+	_ "github.com/tamnd/kvbench/adapters/rocksdb"
 )

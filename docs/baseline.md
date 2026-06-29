@@ -23,50 +23,53 @@ readrandom.
 
 | engine | readrandom | fillrandom | overwrite | class |
 | --- | ---: | ---: | ---: | --- |
-| devnull | 15,151,829 | 5,449,132 | 5,352,990 | floor |
-| memory | 10,695,891 | 2,402,015 | 2,502,453 | ceiling |
-| otter | 10,200,470 | 2,480,002 | 2,509,940 | ceiling |
-| swiss | 9,073,318 | 2,495,683 | 2,515,511 | ceiling |
-| f2 | 7,607,208 | 1,923,525 | 1,886,265 | ceiling |
-| faster | 6,947,112 | 1,165,381 | 1,226,486 | ceiling |
-| kv-f2 | 5,848,333 | 2,637,581 | 2,524,245 | ceiling (kv core) |
-| pogreb | 2,126,482 | 219,855 | 231,308 | durable |
-| kv-f2-durable | 2,045,264 | 1,519,110 | 1,545,917 | durable (kv) |
-| kv | 2,030,279 | 50,430 | 57,106 | durable (kv stack) |
-| buntdb | 1,660,520 | 313,848 | 288,851 | durable |
-| bbolt | 1,012,981 | 49,137 | 48,298 | durable |
-| libmdbx | 979,792 | 88,145 | 88,175 | durable, cgo |
-| lmdb | 671,484 | 93,924 | 96,032 | durable, cgo |
-| badger | 625,338 | 180,341 | 180,567 | durable |
-| goleveldb | 614,634 | 111,467 | 108,244 | durable |
-| pebble | 589,206 | 156,729 | 156,440 | durable |
-| sqlite | 61,257 | 35,178 | 35,911 | durable |
+| devnull | 14,593,389 | 5,226,026 | 4,976,103 | floor |
+| memory | 10,120,682 | 2,191,443 | 2,153,442 | ceiling |
+| otter | 9,473,887 | 2,070,172 | 2,180,308 | ceiling |
+| swiss | 8,581,320 | 2,103,535 | 2,251,741 | ceiling |
+| f2 | 6,440,324 | 1,787,688 | 1,714,952 | ceiling |
+| faster | 6,115,154 | 1,007,670 | 1,231,247 | ceiling |
+| kv-f2 | 5,093,983 | 2,375,275 | 2,066,836 | ceiling (kv core) |
+| pogreb | 1,784,267 | 184,223 | 189,726 | durable |
+| kv | 1,507,836 | 51,637 | 46,830 | durable (kv stack) |
+| kv-f2-durable | 1,407,156 | 1,025,207 | 1,075,176 | durable (kv) |
+| buntdb | 1,372,601 | 315,763 | 291,911 | durable |
+| bbolt | 830,337 | 34,230 | 33,318 | durable |
+| libmdbx | 722,336 | 65,957 | 65,938 | durable, cgo |
+| badger | 564,899 | 117,668 | 117,485 | durable |
+| lmdb | 533,481 | 75,286 | 72,058 | durable, cgo |
+| goleveldb | 510,872 | 104,045 | 103,343 | durable |
+| pebble | 474,678 | 151,044 | 158,953 | durable |
+| rocksdb | 319,011 | 218,651 | 255,466 | durable, cgo |
+| sqlite | 49,028 | 27,034 | 26,727 | durable |
 
 What it says:
 
-The read ceiling for this keyspace is about 9M to 10M ops/s (swiss and otter, bare
-in-memory tables). devnull at 15.1M reads is the harness floor: no engine reads
-faster, because once the store does nothing the remaining time is the workload
+The read ceiling for this keyspace is about 8.5M to 10M ops/s (memory, otter and
+swiss, bare in-memory tables). devnull at 14.6M reads is the harness floor: no engine
+reads faster, because once the store does nothing the remaining time is the workload
 generator producing the next key and the latency clock recording the op. A real
 engine's read number is that floor plus its own work, so the useful ceiling a store
-can chase is min(devnull, swiss), and swiss is the binding one here.
+can chase is min(devnull, swiss), and the in-memory tables are the binding ones here.
 
-The f2 core sits right on that ceiling. `kv-f2` reads at 5.8M and writes at 2.6M,
+The f2 core sits right on that ceiling. `kv-f2` reads at 5.1M and writes at 2.4M,
 faster on writes than swiss because an append to a per-shard log beats an
 open-addressing insert that may probe and resize. The standalone `f2` and `faster`
-rails read a little higher (7.6M, 6.9M) and write a little lower; they are the same
+rails read a little higher (6.4M, 6.1M) and write a little lower; they are the same
 shape behind a single RWMutex, which costs nothing at one client and a lot under
 concurrency (see the README's eight-thread table).
 
-The durable f2 layout is the embedded story. `kv-f2-durable` reads 2.0M and writes
-1.5M, while the cgo cow-B+trees it shares the single-file class with, libmdbx and
-lmdb, write at 88k and 94k and read at 980k and 671k. A hash-log appends the new
-value and atomically repoints one index slot; a copy-on-write B+tree copies a
-root-to-leaf path of pages on every commit, so the write gap is the data structure,
-not the language or the fsync (durability is off for both). The full `kv` stack
-writes at 50k because each benchmark Put is its own WAL'd, MVCC transaction; that
-per-commit shell, not the core, is what the kv row measures, and the gap down from
-kv-f2-durable is its cost.
+The durable f2 layout is the embedded story. `kv-f2-durable` reads 1.4M and writes
+1.0M. The fastest-writing durable competitor is rocksdb, an LSM, at 219k: an LSM
+write is a memtable insert plus a WAL append, no tree to rewrite. The cgo cow-B+trees
+it shares the single-file class with, libmdbx and lmdb, write slower still at 66k and
+75k, because a copy-on-write B+tree copies a root-to-leaf path of pages on every
+commit. Even the write-friendly LSM shape is about 5x off the hash-log: f2 appends
+the new value and atomically repoints one index slot, cheaper than both. The gap is
+the data structure, not the language or the fsync, since durability is off for all of
+them. The full `kv` stack writes at 52k because each benchmark Put is its own WAL'd,
+MVCC transaction; that per-commit shell, not the core, is what the kv row measures,
+and the gap down from kv-f2-durable is its cost.
 
 ## Why the write benchmark looks slow: the durability contrast
 
@@ -107,12 +110,12 @@ still reflects the engine rather than the disk.
 
 ### Why the cgo engines sit out the FULL contrast
 
-On this run libmdbx and lmdb post a FULL fillrandom of about 19k ops/s, roughly
-seventy times the Go engines' 250. That is not a durability win, it is a platform
-asymmetry. On macOS a plain `fsync(2)` only pushes writes to the drive's own cache;
-a true flush to stable media needs `fcntl(F_FULLFSYNC)`. Go's `File.Sync` issues
-`F_FULLFSYNC`, so every Go engine here pays the real platter sync at FULL. The
-bundled LMDB and libmdbx C code calls plain `fsync`, which returns before the data
+On this run libmdbx, lmdb and rocksdb post a FULL fillrandom of about 19k ops/s,
+roughly seventy times the Go engines' 250. That is not a durability win, it is a
+platform asymmetry. On macOS a plain `fsync(2)` only pushes writes to the drive's own
+cache; a true flush to stable media needs `fcntl(F_FULLFSYNC)`. Go's `File.Sync`
+issues `F_FULLFSYNC`, so every Go engine here pays the real platter sync at FULL. The
+LMDB, libmdbx and RocksDB C code calls plain `fsync`, which returns before the data
 is durable against power loss. So their FULL number measures a weaker guarantee than
 the Go engines' FULL number, and putting them in the same column would compare two
 different promises. The OFF column, where no engine syncs, is the like-for-like
@@ -139,5 +142,7 @@ bin/kvbench run \
 
 The in-memory ceilings and the devnull floor are registered in `adapters/inmem`
 and compiled into the default binary, so they appear in `kvbench list` and run with
-no extra flags. The cgo engines (libmdbx, lmdb) need the `cgo_engines` build tag and
-a C compiler; nothing else, since both bindings bundle their C source.
+no extra flags. The cgo engines need the `cgo_engines` build tag and a C toolchain.
+libmdbx and lmdb bundle their C source, so a compiler is enough. RocksDB links the
+host librocksdb, so its build sets `CGO_CFLAGS` and `CGO_LDFLAGS` at a librocksdb
+install; see the README's cgo build note.

@@ -16,8 +16,9 @@ concurrency:
 jobs:
   # Build and test on Linux and macOS. gofmt and vet run here too so a
   # formatting slip fails fast on both platforms. The default build is pure Go
-  # (CGO_ENABLED=0); the cgo-only adapters (LMDB) are behind the cgo_engines tag
-  # and are not compiled here, so no C toolchain or system library is needed.
+  # (CGO_ENABLED=0); the cgo-only adapters (LMDB, libmdbx, RocksDB) are behind the
+  # cgo_engines tag and are compiled in the separate cgo job below, so this job
+  # needs no C toolchain or system library.
   test:
     strategy:
       fail-fast: false
@@ -54,9 +55,63 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -race -count=1 ./...
 
+  # Build the cgo adapters (LMDB, libmdbx, RocksDB), which the pure-Go jobs above
+  # skip, so a break in an adapter or a binding bump is caught on both platforms.
+  # LMDB and libmdbx bundle their C source, a compiler is enough. RocksDB links a
+  # host librocksdb, which grocksdb's build.sh provisions at the exact version the
+  # binding tracks; the result is cached so that build is paid once per key.
+  cgo:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: build deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential wget
+      - name: build deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake wget
+      - name: cache librocksdb
+        id: rocksdb-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/rocksdb-static
+          key: rocksdb-10.10.1-grocksdb-v1.10.8-${{ runner.os }}-${{ runner.arch }}
+      - name: build librocksdb (cache miss)
+        if: steps.rocksdb-cache.outputs.cache-hit != 'true'
+        run: |
+          go mod download github.com/linxGnu/grocksdb
+          GROCKSDB=$(go list -m -f '{{.Dir}}' github.com/linxGnu/grocksdb)
+          bash "$GROCKSDB/build.sh" "$HOME/rocksdb-static"
+      - name: build and smoke (cgo_engines)
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          export CGO_CFLAGS="-I$HOME/rocksdb-static/include"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export CGO_LDFLAGS="-L$HOME/rocksdb-static/lib -lrocksdb -lsnappy -llz4 -lz -lzstd -lc++"
+          else
+            export CGO_LDFLAGS="-L$HOME/rocksdb-static/lib -lrocksdb -lsnappy -llz4 -lz -lzstd -lstdc++ -lm -ldl -lpthread"
+          fi
+          go build -tags cgo_engines ./...
+          go build -tags cgo_engines -o bin/kvbench ./cmd/kvbench
+          ./bin/kvbench run \
+            --engines lmdb,libmdbx,rocksdb,kv-f2-durable \
+            --workloads readrandom,fillrandom \
+            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --out results/cgo-smoke
+
   # End-to-end smoke: build the runner and drive a tiny sweep over the in-memory
-  # floor and ceilings plus the three kv cores. This is the gate that matters for
-  # a benchmark repo: a refactor that keeps every unit test green but breaks the
+  # floor and ceilings plus the kv f2 faces. This is the gate that matters for a
+  # benchmark repo: a refactor that keeps every unit test green but breaks the
   # harness wiring shows up here as a failed run.
   smoke:
     runs-on: ubuntu-latest
@@ -73,7 +128,7 @@ jobs:
         run: |
           go build -o bin/kvbench ./cmd/kvbench
           ./bin/kvbench run \
-            --engines devnull,swiss,otter,faster,kv-btree,kv-lsm,kv-betree \
+            --engines devnull,swiss,otter,faster,kv,kv-f2,kv-f2-durable \
             --workloads readrandom,fillrandom \
             --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/smoke
