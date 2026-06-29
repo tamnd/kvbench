@@ -8,6 +8,7 @@ require (
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/dgraph-io/badger/v4 v4.9.2
 	github.com/erigontech/mdbx-go v0.40.2
+	github.com/linxGnu/grocksdb v1.10.8
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/tamnd/kv v0.2.1-0.20260629173905-a4ffdb637cad

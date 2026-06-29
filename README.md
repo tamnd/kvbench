@@ -38,12 +38,27 @@ sanity reference.
 
 More engines come in behind build tags, one set per execution mode beyond in-process:
 
-LMDB and libmdbx through cgo and a C compiler. LMDB uses the PowerDNS binding and libmdbx the
-erigontech binding; both bundle the C source, so no system library is needed, only a compiler:
+LMDB, libmdbx, and RocksDB through cgo. LMDB uses the PowerDNS binding and libmdbx the
+erigontech binding; both bundle the C source, so a C compiler is all they need:
 
 ```
 CGO_ENABLED=1 go build -tags cgo_engines -o kvbench ./cmd/kvbench
 ```
+
+RocksDB is the exception: the linxGnu/grocksdb binding links the host librocksdb rather than
+bundling it, and grocksdb tracks a specific RocksDB version (10.10.1 at the time of writing), so
+the cleanest build provisions that exact version with grocksdb's own `build.sh` and points the
+cgo flags at it:
+
+```
+GROCKSDB=$(go list -m -f '{{.Dir}}' github.com/linxGnu/grocksdb)
+bash "$GROCKSDB/build.sh" "$HOME/rocksdb-static"     # builds librocksdb + compression libs
+export CGO_CFLAGS="-I$HOME/rocksdb-static/include"
+export CGO_LDFLAGS="-L$HOME/rocksdb-static/lib -lrocksdb -lsnappy -llz4 -lz -lzstd"
+CGO_ENABLED=1 go build -tags cgo_engines -o kvbench ./cmd/kvbench
+```
+
+The same `build.sh` runs in CI behind a version-keyed cache, so the cgo job pays that build once.
 
 redb, sled, and fjall in subprocess mode. These are Rust stores. The harness launches a
 small Rust helper (`kvbench-rs`, built from `rust/`) and talks to it over a pipe with a
@@ -113,66 +128,72 @@ readseq, deleterandom. Keys and values are generated deterministically from a se
 ## Baseline
 
 A single-thread point baseline, durability off, so the read and write paths show without the
-per-commit fsync floor folded in. 50k keys, 1 KiB values, 200k ops, three reps, on an Apple M4
+per-commit fsync floor folded in. 50k keys, 1 KiB values, 100k ops, two reps, on an Apple M4
 (10 cores, 24 GB, go1.26.4). Throughput in ops/s, taken from one run so every row is comparable.
 
 | engine | readrandom | fillrandom | class |
 | --- | --- | --- | --- |
-| devnull | 10,673,924 | 4,075,585 | floor |
-| swiss | 5,787,351 | 1,788,770 | ceiling |
-| f2 | 4,602,718 | 1,302,264 | ceiling |
-| kv-f2 | 4,169,218 | 1,734,763 | ceiling |
-| faster | 3,557,711 | 764,614 | ceiling |
-| kv | 1,630,025 | 39,729 | durable |
-| pogreb | 1,521,420 | 188,809 | durable |
-| buntdb | 1,287,873 | 193,575 | durable |
-| kv-f2-durable | 1,123,100 | 939,581 | durable |
-| bbolt | 771,705 | 33,542 | durable |
-| libmdbx | 675,971 | 66,114 | durable, cgo |
-| goleveldb | 599,430 | 104,413 | durable |
-| badger | 582,571 | 132,698 | durable |
-| lmdb | 558,469 | 72,591 | durable, cgo |
-| pebble | 525,184 | 139,465 | durable |
-| sqlite | 41,638 | 18,744 | durable |
+| devnull | 14,593,389 | 5,226,026 | floor |
+| memory | 10,120,682 | 2,191,443 | ceiling |
+| otter | 9,473,887 | 2,070,172 | ceiling |
+| swiss | 8,581,320 | 2,103,535 | ceiling |
+| f2 | 6,440,324 | 1,787,688 | ceiling |
+| faster | 6,115,154 | 1,007,670 | ceiling |
+| kv-f2 | 5,093,983 | 2,375,275 | ceiling |
+| pogreb | 1,784,267 | 184,223 | durable |
+| kv | 1,507,836 | 51,637 | durable |
+| kv-f2-durable | 1,407,156 | 1,025,207 | durable |
+| buntdb | 1,372,601 | 315,763 | durable |
+| bbolt | 830,337 | 34,230 | durable |
+| libmdbx | 722,336 | 65,957 | durable, cgo |
+| badger | 564,899 | 117,668 | durable |
+| lmdb | 533,481 | 75,286 | durable, cgo |
+| goleveldb | 510,872 | 104,045 | durable |
+| pebble | 474,678 | 151,044 | durable |
+| rocksdb | 319,011 | 218,651 | durable, cgo |
+| sqlite | 49,028 | 27,034 | durable |
 
 kv ships one core now, f2, a latch-free sharded hash index over a hybrid log, and it shows up
 three ways: kv-f2 is the bare core in memory, kv-f2-durable is the durable single-file layout,
-and kv is the full DB stack a user gets (WAL, MVCC, transactions). The f2 core reads at 4.2M and
-writes at 1.7M, sitting right on the in-memory ceiling, faster on writes than swiss and well past
-faster (5.1M reads, 905k writes a generation back behind a single RWMutex). The lock tax that gap
-hints at is small at one thread and large under concurrency, which is the next table.
+and kv is the full DB stack a user gets (WAL, MVCC, transactions). The f2 core reads at 5.1M and
+writes at 2.4M, sitting right on the in-memory ceiling, faster on writes than swiss and well past
+faster (6.1M reads, 1.0M writes behind a single RWMutex). The lock tax that gap hints at is small
+at one thread and large under concurrency, which is the next table.
 
-Against the embedded competitors the durable f2 layout is the story. kv-f2-durable writes 940k
-and reads 1.1M, while the cgo B+trees it shares the single-file class with, libmdbx and lmdb,
-write at 66k and 73k and read at 676k and 558k. A hash-log appends the new value and atomically
-repoints one index slot; a copy-on-write B+tree copies a root-to-leaf path of pages on every
-commit, so the write gap is the data structure, not the language or the fsync (durability is off
-for both). The full kv stack writes at 40k because each benchmark Put is its own WAL'd, MVCC
-transaction; that per-commit shell, not the core, is what the kv row measures, and the gap to
-kv-f2-durable is its cost.
+Against the embedded competitors the durable f2 layout is the story. kv-f2-durable writes 1.0M
+and reads 1.4M. The fastest-writing durable competitor is rocksdb, an LSM, at 219k, because an
+LSM write is an in-memory memtable insert plus a WAL append, no tree rewrite; the cgo cow-B+trees
+it shares the single-file class with, libmdbx and lmdb, write slower still at 66k and 75k because
+a copy-on-write B+tree copies a root-to-leaf path of pages on every commit. Even the LSM, the
+write-friendly shape, is about 5x off the hash-log layout: f2 appends the new value and atomically
+repoints one index slot, which is cheaper than both. The gap is the data structure, not the
+language or the fsync, since durability is off for all of them. The full kv stack writes at 52k
+because each benchmark Put is its own WAL'd, MVCC transaction; that per-commit shell, not the
+core, is what the kv row measures, and the gap to kv-f2-durable is its cost.
 
 Under load the latch-free design separates from everything with a lock. Same profile at eight
 concurrent clients:
 
 | engine | readrandom | fillrandom |
 | --- | --- | --- |
-| f2 | 18,599,749 | 5,338,624 |
-| kv-f2 | 15,675,158 | 6,614,859 |
-| kv-f2-durable | 7,806,464 | 3,851,653 |
-| kv | 6,841,222 | 61,266 |
-| faster | 8,816,641 | 1,210,484 |
-| libmdbx | 1,592,880 | 72,632 |
-| lmdb | 436,428 | 77,294 |
+| f2 | 14,127,836 | 3,832,475 |
+| kv-f2 | 14,023,840 | 7,706,571 |
+| faster | 9,576,491 | 1,023,832 |
+| kv | 6,044,366 | 55,029 |
+| kv-f2-durable | 5,184,793 | 3,552,932 |
+| rocksdb | 1,304,857 | 112,242 |
+| libmdbx | 1,126,491 | 61,842 |
+| lmdb | 334,493 | 64,183 |
 
-The f2 core scales to 15.7M reads and 6.6M writes on eight threads because a read is an atomic
+The f2 core scales to 14.0M reads and 7.7M writes on eight threads because a read is an atomic
 load and a tag probe with no lock, and writers on different shards never touch the same log.
-faster, the same store behind one RWMutex, caps at 8.8M reads and 1.2M writes, so f2 reads about
-twice as fast and writes about five times as fast: that is the lock tax made visible. The cgo
-B+trees scale reads modestly (libmdbx 1.6M, the more modern fork pulling well ahead of lmdb's
-436k) and do not scale writes at all, since both serialize every commit on a single writer, the
-same wall the WAL'd kv stack hits at 61k. See [docs/baseline.md](docs/baseline.md) for the full
-per-workload tables and the durability contrast; turn durability up to FULL and every durable
-engine collapses toward the disk's fsync rate, because then the benchmark measures the disk.
+faster, the same store behind one RWMutex, caps at 9.6M reads and 1.0M writes, so f2 reads about
+half again as fast and writes about seven times as fast: that is the lock tax made visible. The
+cgo engines scale reads modestly (rocksdb 1.3M off its block cache, libmdbx 1.1M, lmdb 334k) and
+do not scale writes at all, since each serializes commits on a single writer or WAL, the same wall
+the WAL'd kv stack hits at 55k. See [docs/baseline.md](docs/baseline.md) for the full per-workload
+tables and the durability contrast; turn durability up to FULL and every durable engine collapses
+toward the disk's fsync rate, because then the benchmark measures the disk.
 
 ## Fairness
 
