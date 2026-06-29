@@ -109,6 +109,42 @@ jobs:
             --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/cgo-smoke
 
+  # Build the network adapters (redis, valkey, dragonfly, aki), which the default
+  # build skips, so a break in the respnet launcher or an adapter is caught on
+  # both platforms. The build needs no server binary; the Linux smoke installs
+  # redis-server from apt and drives the redis engine, exercising the shared
+  # launch-and-go-redis path end to end. valkey, dragonfly and aki are not in the
+  # base image, so they are compile-checked here and benchmarked on the bench host.
+  network:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+      - name: build (network_engines)
+        env:
+          CGO_ENABLED: "0"
+        run: go build -tags network_engines ./...
+      - name: redis smoke (Linux)
+        if: runner.os == 'Linux'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          sudo apt-get update && sudo apt-get install -y redis-server
+          go build -tags network_engines -o bin/kvbench ./cmd/kvbench
+          ./bin/kvbench run \
+            --engines redis \
+            --workloads readrandom,fillrandom \
+            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --out results/network-smoke
+
   # End-to-end smoke: build the runner and drive a tiny sweep over the in-memory
   # floor and ceilings plus the kv f2 faces. This is the gate that matters for a
   # benchmark repo: a refactor that keeps every unit test green but breaks the

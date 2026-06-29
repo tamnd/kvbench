@@ -55,7 +55,7 @@ kvbench report --in results/public --md
 The db_bench workloads are the load and scan shapes: `fillseq` and `fillrandom` insert fresh keys in order and at random, `overwrite` rewrites existing keys, `readrandom` and `readseq` read point and in order, `deleterandom` removes.
 The YCSB workloads are the standard mixes: A is 50/50 read/update, B is 95/5 read-heavy, C is read-only, D reads the latest inserts, E is short range scans, F is read-modify-write.
 
-Unordered engines (pogreb, redis, and the kv f2 faces) have no sorted iteration, so the scan workloads (`readseq`, `ycsb-e`) report an error for them instead of a number, by design rather than as a failure.
+Unordered engines (pogreb, the RESP servers redis, valkey, dragonfly and aki, and the kv f2 faces) have no sorted iteration, so the scan workloads (`readseq`, `ycsb-e`) report an error for them instead of a number, by design rather than as a failure.
 
 ## Fairness: DEFAULT durability
 
@@ -79,6 +79,9 @@ Every cell then carries a `default-durability` asterisk that states what that en
 | pebble | WAL not fsynced per commit | background WAL flush |
 | goleveldb | WriteOptions Sync=false | log written without per-commit fsync |
 | redis | AOF appendfsync=everysec | fsync the append log about once a second |
+| valkey | AOF appendfsync=everysec | the Redis fork, same once-a-second append-log fsync |
+| aki | AOF appendfsync=everysec | single-file RESP server, WAL fsynced about once a second |
+| dragonfly | periodic snapshot, no per-command fsync | weaker than an append log, snapshot-based persistence |
 | kv | SyncFull WAL, the library default | fsync per commit, strongest durability class like bbolt |
 | kv-f2-durable | the f2 layout's own per-commit sync | full single-file durability, no WAL or MVCC shell |
 
