@@ -21,11 +21,11 @@ go install github.com/tamnd/kvbench/cmd/kvbench@latest
 
 The default build is pure Go, no cgo, and pulls in the in-process engines that run
 anywhere with zero system dependencies: bbolt, goleveldb, pebble, badger, buntdb, pogreb,
-SQLite (via the pure-Go `modernc.org/sqlite`), and all three cores of tamnd/kv as
-`kv-btree`, `kv-lsm`, and `kv-betree`. kv is the single-file embedded store this benchmark
-exists to keep honest, so it runs through the same in-process path as everyone else. The
-`kv-betree` core is the 2059-redesign Bε-tree, off by default inside kv and benchmarked here
-only because it is the core under active work, so its numbers are a moving target.
+SQLite (via the pure-Go `modernc.org/sqlite`), and tamnd/kv. kv ships one core now, f2, a
+latch-free sharded hash index over a hybrid log, and it shows up three ways: `kv` is the full
+DB stack a user gets (WAL, MVCC, transactions), `kv-f2` is the bare core in memory, and
+`kv-f2-durable` is the durable single-file layout. kv is the single-file embedded store this
+benchmark exists to keep honest, so it runs through the same in-process path as everyone else.
 
 Alongside the durable engines the default build carries two reference rails, in package
 `adapters/inmem`, that are non-durable and not peers to anyone. `devnull` is the floor: it
@@ -36,10 +36,10 @@ in-memory structure of that shape serves the same keys, which is the budget a re
 spends on ordering, persistence and transactions. `memory` is the naive ordered map kept as a
 sanity reference.
 
-Three more engines come in behind build tags, one per execution mode beyond in-process:
+More engines come in behind build tags, one set per execution mode beyond in-process:
 
-LMDB through cgo and a C compiler. It uses the PowerDNS binding, which bundles the LMDB C
-source, so no system liblmdb is needed:
+LMDB and libmdbx through cgo and a C compiler. LMDB uses the PowerDNS binding and libmdbx the
+erigontech binding; both bundle the C source, so no system library is needed, only a compiler:
 
 ```
 CGO_ENABLED=1 go build -tags cgo_engines -o kvbench ./cmd/kvbench
