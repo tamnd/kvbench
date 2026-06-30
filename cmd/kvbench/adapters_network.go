@@ -11,6 +11,7 @@ import (
 	_ "github.com/tamnd/kvbench/adapters/dragonfly"
 	_ "github.com/tamnd/kvbench/adapters/garnet"
 	_ "github.com/tamnd/kvbench/adapters/kvredis"
+	_ "github.com/tamnd/kvbench/adapters/kvrediscache"
 	_ "github.com/tamnd/kvbench/adapters/kvrocks"
 	_ "github.com/tamnd/kvbench/adapters/redis"
 	_ "github.com/tamnd/kvbench/adapters/valkey"
