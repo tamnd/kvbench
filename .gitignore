@@ -9,3 +9,8 @@
 
 # Rust helper build output for the subprocess engines.
 /rust/target/
+
+# tago build output for the docs site.
+/docs/public/
+/docs/public-cf/
+/docs/public-pages/
