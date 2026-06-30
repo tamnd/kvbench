@@ -1,6 +1,6 @@
 # The Redis-compatible rail
 
-Four of the engines kvbench measures are not embedded libraries at all: they are separate server processes that speak the Redis wire protocol.
+Several of the engines kvbench measures are not embedded libraries at all: they are separate server processes that speak the Redis wire protocol.
 The harness reaches each one the same way, over a private unix socket with the pure-Go go-redis client, so a difference in the number is the server, not the adapter.
 This page is the comparison between them, and where kv's own Redis face lands among them.
 
@@ -10,13 +10,15 @@ This page is the comparison between them, and where kv's own Redis face lands am
 | --- | --- | --- |
 | redis | Redis 8.8, the original | append-only file, `appendfsync everysec` by default |
 | valkey | Valkey 9.1, the Redis fork | the same append-only log, same once-a-second fsync |
-| aki | [tamnd/aki](https://github.com/tamnd/aki), a Redis-compatible database in a single file | a paged b-tree store in one file plus its WAL |
 | dragonfly | Dragonfly, a shared-nothing multi-threaded core | periodic snapshots, no per-command fsync |
+| garnet | [Microsoft Garnet](https://github.com/microsoft/garnet), a RESP cache-store on the FASTER core | in-memory, optional checkpoints plus an append-only file |
+| aki | [tamnd/aki](https://github.com/tamnd/aki), a Redis-compatible database in a single file | a paged b-tree store in one file plus its WAL |
+| kvrocks | [Apache Kvrocks](https://github.com/apache/kvrocks), a RESP face on RocksDB | a RocksDB directory of SST files plus its WAL |
 | kv-redis | [tamnd/kv](https://github.com/tamnd/kv)'s `serve` Redis face | kv's single-file hash-log with its WAL |
 
-redis and valkey are the in-memory reference: at their core the keyspace is a RAM hash table, and persistence is an append log replayed on restart.
-aki and kv-redis are the persistent single-file relatives: the data lives in one file on disk, and a read or a write touches that store, not only RAM.
-That difference is the whole point of putting them on one board.
+redis, valkey, dragonfly and garnet are the in-memory reference: at their core the keyspace is a RAM structure, and persistence is a log or a snapshot replayed on restart.
+aki, kvrocks and kv-redis are the persistent relatives: the data lives in an on-disk store, and a read or a write touches that store, not only RAM.
+That difference is the whole point of putting them on one board, and it is why the report splits the in-memory servers (Class 2) from the persistent ones (Class 3).
 
 ## Running it
 
@@ -24,7 +26,7 @@ The RESP adapters are behind the `network_engines` build tag, and each needs its
 
 ```
 go build -tags network_engines -o kvbench-net ./cmd/kvbench
-# redis-server / valkey-server / aki / dragonfly / kv on PATH as needed
+# redis-server / valkey-server / dragonfly / GarnetServer / aki / kvrocks / kv on PATH as needed
 kvbench-net run --engines valkey,aki,kv-redis \
   --workloads fillrandom,readrandom,overwrite,deleterandom,ycsb-a,ycsb-b,ycsb-c,ycsb-f \
   --regimes cache-resident --durability OFF \
@@ -68,7 +70,8 @@ Throughput in operations per second; higher is better.
 | ycsb-c (read-only) | 193,738 | 134,592 | 136,980 |
 
 redis is not in this table on purpose: on the macOS host the `redis-server` on PATH is a Homebrew symlink to the Valkey binary, so a "redis" row would be the valkey row relabeled.
-redis 8.8 and dragonfly are measured on the Linux bench host, where both ship a native build; dragonfly has no macOS build at all.
+redis 8.8, dragonfly, garnet and kvrocks are measured on the Linux bench host, where each ships a native build; dragonfly has no macOS build at all, garnet is reached through its .NET build, and kvrocks is built there against its bundled RocksDB.
+The board above is the macOS point baseline, so it stays at the engines that run natively on the laptop; the bench-host servers are added to the Class 2 and Class 3 tables on that host.
 
 ## Reading the board
 
