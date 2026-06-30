@@ -10,6 +10,7 @@ import (
 	_ "github.com/tamnd/kvbench/adapters/aki"
 	_ "github.com/tamnd/kvbench/adapters/dragonfly"
 	_ "github.com/tamnd/kvbench/adapters/garnet"
+	_ "github.com/tamnd/kvbench/adapters/hlogredis"
 	_ "github.com/tamnd/kvbench/adapters/kvredis"
 	_ "github.com/tamnd/kvbench/adapters/kvrediscache"
 	_ "github.com/tamnd/kvbench/adapters/kvrocks"
