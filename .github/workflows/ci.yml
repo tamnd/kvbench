@@ -108,6 +108,23 @@ jobs:
             --workloads readrandom,fillrandom \
             --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/cgo-smoke
+      - name: compile-check (speedb_engines)
+        env:
+          CGO_ENABLED: "1"
+        # Speedb shares the grocksdb engine with rocksdb and is ABI-compatible, so
+        # it compiles and links against the stock librocksdb here. This only guards
+        # the speedb_engines code from rotting; it is not run, because that would
+        # be RocksDB mislabeled. Real Speedb numbers come from a host that provides
+        # Speedb's drop-in library as librocksdb.
+        run: |
+          export CGO_CFLAGS="-I$HOME/rocksdb-static/include"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export CGO_LDFLAGS="-L$HOME/rocksdb-static/lib -lrocksdb -lsnappy -llz4 -lz -lzstd -lc++"
+          else
+            export CGO_LDFLAGS="-L$HOME/rocksdb-static/lib -lrocksdb -lsnappy -llz4 -lz -lzstd -lstdc++ -lm -ldl -lpthread"
+          fi
+          go build -tags speedb_engines ./...
+          go build -tags speedb_engines -o bin/kvbench-speedb ./cmd/kvbench
 
   # Build the network adapters (redis, valkey, dragonfly, aki), which the default
   # build skips, so a break in the respnet launcher or an adapter is caught on

@@ -60,6 +60,25 @@ CGO_ENABLED=1 go build -tags cgo_engines -o kvbench ./cmd/kvbench
 
 The same `build.sh` runs in CI behind a version-keyed cache, so the cgo job pays that build once.
 
+Speedb is the RocksDB-compatible fork, a drop-in replacement for librocksdb with reworked
+internals for modern storage. It shares the grocksdb engine with rocksdb (same C API and ABI), so
+it differs only in the name it registers under and the library the binary links. Because both go
+through the one grocksdb binding that links a single librocksdb, rocksdb and speedb cannot share a
+binary, so speedb has its own `speedb_engines` tag and its own build. Build Speedb's library,
+expose it to the linker as librocksdb (Speedb keeps the rocksdb symbols, so a symlink or Speedb's
+rocksdb-named build works), and point the cgo flags at it the same way:
+
+```
+# build libspeedb, then expose it as librocksdb for the linker
+export CGO_CFLAGS="-I$HOME/speedb/include"
+export CGO_LDFLAGS="-L$HOME/speedb/lib -lrocksdb -lsnappy -llz4 -lz -lzstd"
+CGO_ENABLED=1 go build -tags speedb_engines -o kvbench-speedb ./cmd/kvbench
+```
+
+CI compile-checks the `speedb_engines` tag against the stock librocksdb so the code cannot rot, but
+it does not run it there: a Speedb number has to come from a host that actually provides Speedb's
+library, otherwise it would be RocksDB wearing the speedb label.
+
 redb, sled, and fjall in subprocess mode. These are Rust stores. The harness launches a
 small Rust helper (`kvbench-rs`, built from `rust/`) and talks to it over a pipe with a
 length-prefixed binary protocol, multiplexed by request id so the clients stay concurrent.
