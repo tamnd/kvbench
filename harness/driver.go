@@ -74,6 +74,7 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 	r.Engine.Name = meta.Name
 	r.Engine.Family = string(meta.Family)
 	r.Engine.Mode = string(meta.Mode)
+	r.Engine.Class = string(engine.ClassOf(meta))
 	r.Engine.Version = meta.Version
 	r.Engine.Profile = c.Profile
 	r.Engine.Caps = meta.Caps

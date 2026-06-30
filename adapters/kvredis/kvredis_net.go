@@ -34,6 +34,7 @@ func init() {
 			Name:    "kv-redis",
 			Version: "kv-serve-on-path",
 			Binary:  "kv",
+			Class:   engine.ClassRedisPersistent,
 			ArgsFn: func(cfg engine.Config, sock string) []string {
 				// The database lives under the cell directory; kv serve creates it if
 				// it is missing. --addr "" turns the HTTP face off so only the RESP

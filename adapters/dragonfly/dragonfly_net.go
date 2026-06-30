@@ -30,6 +30,7 @@ func init() {
 			Name:    "dragonfly",
 			Version: "server-on-path",
 			Binary:  "dragonfly",
+			Class:   engine.ClassRedisMemory,
 			ArgsFn: func(cfg engine.Config, sock string) []string {
 				// Dragonfly disables TCP with --port 0 and listens on the unix
 				// socket, keeping the data file under the cell directory. It has no

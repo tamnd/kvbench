@@ -119,6 +119,15 @@ engine's shipped durability (`--durability DEFAULT`). For the fixed, reproducibl
 that anyone can run and verify, use `make bench-public`; the profile and the fairness model are in
 [docs/public-benchmark.md](docs/public-benchmark.md).
 
+`report` splits the board into four comparison classes and scores them separately, so an
+in-process get never shares a table with a networked one no matter how many asterisks sit beside
+the numbers. Class 1 is the embedded local KV engines (the home division for kv, and the rocksdb,
+libmdbx, lmdb, pebble, badger, bbolt and Rust-rail peers); Class 2 is the Redis-compatible
+in-memory servers (redis, valkey, dragonfly); Class 3 is the Redis-compatible persistent servers
+backed by an on-disk store (aki, kv-redis); Class 4 is the distributed systems under their own
+cluster profile. Each engine carries its class in its metadata, so the split is in the data, not a
+flag at report time.
+
 ## Workloads
 
 YCSB A through F, plus the db_bench staples: fillseq, fillrandom, overwrite, readrandom,

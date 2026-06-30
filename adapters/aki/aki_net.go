@@ -27,6 +27,7 @@ func init() {
 			Name:    "aki",
 			Version: "server-on-path",
 			Binary:  "aki",
+			Class:   engine.ClassRedisPersistent,
 			ArgsFn: func(cfg engine.Config, sock string) []string {
 				// aki is a multi-command CLI; the server lives under "aki server".
 				return append([]string{"server"}, respnet.RedisDialectArgs(cfg, sock)...)
