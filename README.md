@@ -88,7 +88,18 @@ kv-redis lands among them, is in [docs/redis-compat.md](docs/redis-compat.md).
 go build -tags network_engines -o kvbench ./cmd/kvbench
 ```
 
-All three tags combine in one binary:
+KeyDB is kept too, but only as a labeled historical rail under the name `legacy-keydb`, double-gated
+behind the `legacy_engines` tag so a normal network build leaves it out. KeyDB's last release is
+6.3.4 and its maintenance has gone quiet, so it is not a headline competitor. For current
+Redis-family baselines use Redis 8.x, Valkey, DragonflyDB, and the Class 3 persistent servers;
+KeyDB results should not be read as representative of the actively maintained Redis-compatible
+ecosystem in 2026. Opt in with both tags when you want the historical point:
+
+```
+go build -tags "network_engines legacy_engines" -o kvbench ./cmd/kvbench
+```
+
+All three primary tags combine in one binary:
 
 ```
 CGO_ENABLED=1 go build -tags "cgo_engines network_engines subprocess_engines" \
