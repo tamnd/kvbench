@@ -90,18 +90,21 @@ cp rust/target/release/kvbench-rs /usr/local/bin/
 go build -tags subprocess_engines -o kvbench ./cmd/kvbench
 ```
 
-redis, valkey, dragonfly, aki, and kv-redis in network mode. These are the RESP servers, the
-Redis-compatible family. Each adapter launches its own server on a per-process unix socket,
-drives it with the pure-Go go-redis client, and shuts it down on close, so there is no Docker
-and no shared port. The launch-and-talk plumbing is shared in `adapters/respnet`; an engine is
-just a spec naming its binary and flags. redis, valkey and aki speak the same flag dialect;
-dragonfly and kv-redis bring their own. The relevant server binary must be on PATH
-(`redis-server`, `valkey-server`, `dragonfly`, `aki`, or `kv`); a missing binary marks that
-engine's cells unsupported rather than failing the run. aki (tamnd/aki) is the durable
-single-file RESP server in the set, the networked relative of the kv Redis layer; kv-redis is
-that layer itself, tamnd/kv's `serve` Redis face over its own hash-log store. Dragonfly has no
-native macOS build, so it runs on Linux only. The comparison between these engines, and where
-kv-redis lands among them, is in [docs/redis-compat.md](docs/redis-compat.md).
+redis, valkey, dragonfly, garnet, aki, kvrocks, and kv-redis in network mode. These are the RESP
+servers, the Redis-compatible family. Each adapter launches its own server on a per-process unix
+socket, drives it with the pure-Go go-redis client, and shuts it down on close, so there is no
+Docker and no shared port. The launch-and-talk plumbing is shared in `adapters/respnet`; an engine
+is just a spec naming its binary and flags. redis, valkey and aki speak the same flag dialect;
+dragonfly, garnet, kvrocks and kv-redis bring their own. The relevant server binary must be on PATH
+(`redis-server`, `valkey-server`, `dragonfly`, `GarnetServer`, `aki`, `kvrocks`, or `kv`); a missing
+binary marks that engine's cells unsupported rather than failing the run. The in-memory servers are
+redis, valkey, dragonfly and garnet (Microsoft's FASTER-based RESP cache-store). The persistent
+ones answer from an on-disk store: aki (tamnd/aki) is the durable single-file RESP server, the
+networked relative of the kv Redis layer; kvrocks (Apache Kvrocks) is the RESP face on a RocksDB
+LSM; and kv-redis is the kv Redis layer itself, tamnd/kv's `serve` Redis face over its own hash-log
+store. Dragonfly and Garnet have no native macOS build the bench uses, so they run on the Linux
+bench host. The comparison between these engines, and where kv-redis lands among them, is in
+[docs/redis-compat.md](docs/redis-compat.md).
 
 ```
 go build -tags network_engines -o kvbench ./cmd/kvbench
@@ -153,10 +156,10 @@ that anyone can run and verify, use `make bench-public`; the profile and the fai
 in-process get never shares a table with a networked one no matter how many asterisks sit beside
 the numbers. Class 1 is the embedded local KV engines (the home division for kv, and the rocksdb,
 libmdbx, lmdb, pebble, badger, bbolt and Rust-rail peers); Class 2 is the Redis-compatible
-in-memory servers (redis, valkey, dragonfly); Class 3 is the Redis-compatible persistent servers
-backed by an on-disk store (aki, kv-redis); Class 4 is the distributed systems under their own
-cluster profile. Each engine carries its class in its metadata, so the split is in the data, not a
-flag at report time.
+in-memory servers (redis, valkey, dragonfly, garnet); Class 3 is the Redis-compatible persistent
+servers backed by an on-disk store (aki, kvrocks, kv-redis); Class 4 is the distributed systems
+under their own cluster profile. Each engine carries its class in its metadata, so the split is in
+the data, not a flag at report time.
 
 ## Workloads
 
