@@ -20,7 +20,7 @@ type eng struct {
 
 func (e *eng) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "memory", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "memory", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version:   "builtin",
 		Caps:      engine.Capabilities{Ordered: true, AtomicBatch: true, Durable: false, SingleFile: false, PureNoCgo: true},
 		Asterisks: []engine.Asterisk{{Code: "non-durable", Note: "in-memory reference, no persistence; speed-of-light ceiling only"}},

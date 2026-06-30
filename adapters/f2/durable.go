@@ -43,7 +43,7 @@ type durable struct {
 
 func (e *durable) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "kv-f2-durable", Family: engine.FamilyHashLog, Mode: engine.ModeInProc,
+		Name: "kv-f2-durable", Family: engine.FamilyHashLog, Mode: engine.ModeInProc, Reference: true,
 		Version: "main",
 		Caps: engine.Capabilities{
 			Ordered: false, AtomicBatch: false, Durable: true, Transactions: false,

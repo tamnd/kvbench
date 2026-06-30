@@ -104,7 +104,7 @@ type devnull struct{}
 
 func (*devnull) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "devnull", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "devnull", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version: "builtin",
 		Caps:    engine.Capabilities{PureNoCgo: true},
 		Asterisks: []engine.Asterisk{
@@ -182,7 +182,7 @@ func newFaster() *faster {
 
 func (e *faster) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "faster", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "faster", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version: "builtin",
 		Caps:    engine.Capabilities{AtomicBatch: true, PureNoCgo: true},
 		Asterisks: []engine.Asterisk{
@@ -379,7 +379,7 @@ func newSwiss() *swiss { return &swiss{slots: make([]swissSlot, 1<<10)} }
 
 func (e *swiss) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "swiss", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "swiss", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version: "builtin",
 		Caps:    engine.Capabilities{AtomicBatch: true, PureNoCgo: true},
 		Asterisks: []engine.Asterisk{
@@ -538,7 +538,7 @@ func newOtter() *otter {
 
 func (e *otter) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "otter", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "otter", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version: "builtin",
 		Caps:    engine.Capabilities{AtomicBatch: true, PureNoCgo: true},
 		Asterisks: []engine.Asterisk{
@@ -689,7 +689,7 @@ func tagOf(h uint64) uint64 { return (h >> 24) & 0x7fff }
 
 func (e *f2) Meta() engine.Meta {
 	return engine.Meta{
-		Name: "f2", Family: engine.FamilyInMemory, Mode: engine.ModeInProc,
+		Name: "f2", Family: engine.FamilyInMemory, Mode: engine.ModeInProc, Reference: true,
 		Version: "builtin",
 		Caps:    engine.Capabilities{AtomicBatch: true, PureNoCgo: true},
 		Asterisks: []engine.Asterisk{
