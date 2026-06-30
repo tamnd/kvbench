@@ -12,13 +12,19 @@ This page is the comparison between them, and where kv's own Redis face lands am
 | valkey | Valkey 9.1, the Redis fork | the same append-only log, same once-a-second fsync |
 | dragonfly | Dragonfly, a shared-nothing multi-threaded core | periodic snapshots, no per-command fsync |
 | garnet | [Microsoft Garnet](https://github.com/microsoft/garnet), a RESP cache-store on the FASTER core | in-memory, optional checkpoints plus an append-only file |
+| kv-redis-cache | [tamnd/kv](https://github.com/tamnd/kv)'s `serve :memory:` Redis face | none; the in-memory backend is a pure RAM cache, gone on exit |
 | aki | [tamnd/aki](https://github.com/tamnd/aki), a Redis-compatible database in a single file | a paged b-tree store in one file plus its WAL |
 | kvrocks | [Apache Kvrocks](https://github.com/apache/kvrocks), a RESP face on RocksDB | a RocksDB directory of SST files plus its WAL |
 | kv-redis | [tamnd/kv](https://github.com/tamnd/kv)'s `serve` Redis face | kv's single-file hash-log with its WAL |
 
-redis, valkey, dragonfly and garnet are the in-memory reference: at their core the keyspace is a RAM structure, and persistence is a log or a snapshot replayed on restart.
+redis, valkey, dragonfly, garnet and kv-redis-cache are the in-memory reference: at their core the keyspace is a RAM structure, and there is no disk in the read or write path.
 aki, kvrocks and kv-redis are the persistent relatives: the data lives in an on-disk store, and a read or a write touches that store, not only RAM.
 That difference is the whole point of putting them on one board, and it is why the report splits the in-memory servers (Class 2) from the persistent ones (Class 3).
+
+kv shows up on both sides on purpose, as the same Redis face over two backends.
+kv-redis-cache is `kv serve :memory:`, the keyspace held in kv's in-memory backend with nothing written to disk, which is what puts it in Class 2 next to redis and valkey.
+kv-redis is `kv serve <db>`, the same wire loop over an on-disk hash-log that commits every write, which is what puts it in Class 3 next to aki and kvrocks.
+The pair is the cost of durability measured on one engine: the gap between the two columns is what a committed write buys over a RAM set.
 
 ## Running it
 
@@ -35,7 +41,7 @@ kvbench-net run --engines valkey,aki,kv-redis \
 kvbench-net report --in results/resp --md
 ```
 
-Build the kv binary from [tamnd/kv](https://github.com/tamnd/kv) with `go build -o kv ./cmd/kv`; the adapter runs `kv serve <db> --addr "" --resp-unixsocket <sock>`, which turns the HTTP face off and serves only RESP on the socket.
+Build the kv binary from [tamnd/kv](https://github.com/tamnd/kv) with `go build -o kv ./cmd/kv`; the kv-redis adapter runs `kv serve <db> --addr "" --resp-unixsocket <sock>`, which turns the HTTP face off and serves only RESP on the socket, and the kv-redis-cache adapter runs the same with `:memory:` in place of the db path and `--synchronous off`, which opens kv on its in-memory backend so nothing touches the disk.
 
 The scan workloads (`readseq`, `ycsb-e`) are left out: the RESP string keyspace is unordered, so a sorted scan is not part of the contract for any of these engines.
 
@@ -72,6 +78,30 @@ Throughput in operations per second; higher is better.
 redis is not in this table on purpose: on the macOS host the `redis-server` on PATH is a Homebrew symlink to the Valkey binary, so a "redis" row would be the valkey row relabeled.
 redis 8.8, dragonfly, garnet and kvrocks are measured on the Linux bench host, where each ships a native build; dragonfly has no macOS build at all, garnet is reached through its .NET build, and kvrocks is built there against its bundled RocksDB.
 The board above is the macOS point baseline, so it stays at the engines that run natively on the laptop; the bench-host servers are added to the Class 2 and Class 3 tables on that host.
+
+## kv in both classes
+
+kv-redis-cache and kv-redis are the same Redis face over two backends, so the cleanest way to read them is side by side from one run.
+Same host and profile as the board above, both at `--durability OFF`, the two columns measured back to back.
+
+| workload | kv-redis-cache (Class 2, RAM) | kv-redis (Class 3, on-disk) |
+| --- | ---: | ---: |
+| fillrandom (write) | 40,410 | 39,503 |
+| overwrite (write) | 40,921 | 40,143 |
+| deleterandom (write) | 70,250 | 48,321 |
+| ycsb-a (50/50 read/update) | 52,258 | 55,193 |
+| ycsb-f (read-modify-write) | 63,077 | 66,073 |
+| ycsb-b (95/5 read-heavy) | 108,188 | 100,925 |
+| readrandom (read) | 134,260 | 135,865 |
+| ycsb-c (read-only) | 134,224 | 133,656 |
+
+At OFF durability the two faces run neck and neck on almost every workload, and that is the expected result, not a flat run.
+With the per-commit barrier off, the on-disk face's writes land in the OS page cache and the in-memory face's land in kv's RAM buffer, and on this machine those cost about the same, so what is left is one identical wire loop and one identical hash-log apply over two byte stores.
+deleterandom is the one workload where the cache pulls clearly ahead, 70k against 48k, because the on-disk delete still appends its tombstone to a real file while the in-memory one does not.
+The separation the two columns are built to show is not at OFF at all: it opens up when kv-redis runs at its shipped durability and pays an `F_FULLFSYNC` per commit, where the cache, having no durability to provide, keeps the OFF rate.
+That is the point of carrying kv in both classes: kv-redis-cache is the honest Class 2 entry, a pure RAM cache with the disk out of the path, and the distance to it is what a committed write costs on the same engine.
+
+This pair is also what proved out the in-memory backend: before kv's memfs grew its files with amortized capacity, the cache wrote an order of magnitude slower than the on-disk face, a backwards result that was a buffer-reallocation artifact rather than the engine, and the column above is what it looks like once that is fixed.
 
 ## Reading the board
 

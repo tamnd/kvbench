@@ -90,35 +90,28 @@ cp rust/target/release/kvbench-rs /usr/local/bin/
 go build -tags subprocess_engines -o kvbench ./cmd/kvbench
 ```
 
-redis, valkey, dragonfly, garnet, aki, kvrocks, and kv-redis in network mode. These are the RESP
-servers, the Redis-compatible family. Each adapter launches its own server on a per-process unix
-socket, drives it with the pure-Go go-redis client, and shuts it down on close, so there is no
-Docker and no shared port. The launch-and-talk plumbing is shared in `adapters/respnet`; an engine
-is just a spec naming its binary and flags. redis, valkey and aki speak the same flag dialect;
-dragonfly, garnet, kvrocks and kv-redis bring their own. The relevant server binary must be on PATH
-(`redis-server`, `valkey-server`, `dragonfly`, `GarnetServer`, `aki`, `kvrocks`, or `kv`); a missing
-binary marks that engine's cells unsupported rather than failing the run. The in-memory servers are
-redis, valkey, dragonfly and garnet (Microsoft's FASTER-based RESP cache-store). The persistent
-ones answer from an on-disk store: aki (tamnd/aki) is the durable single-file RESP server, the
-networked relative of the kv Redis layer; kvrocks (Apache Kvrocks) is the RESP face on a RocksDB
-LSM; and kv-redis is the kv Redis layer itself, tamnd/kv's `serve` Redis face over its own hash-log
-store. Dragonfly and Garnet have no native macOS build the bench uses, so they run on the Linux
-bench host. The comparison between these engines, and where kv-redis lands among them, is in
-[docs/redis-compat.md](docs/redis-compat.md).
+redis, valkey, dragonfly, garnet, aki, kvrocks, kv-redis-cache, and kv-redis in network mode. These
+are the RESP servers, the Redis-compatible family. Each adapter launches its own server on a
+per-process unix socket, drives it with the pure-Go go-redis client, and shuts it down on close, so
+there is no Docker and no shared port. The launch-and-talk plumbing is shared in `adapters/respnet`;
+an engine is just a spec naming its binary and flags. redis, valkey and aki speak the same flag
+dialect; dragonfly, garnet, kvrocks, kv-redis-cache and kv-redis bring their own. The relevant
+server binary must be on PATH (`redis-server`, `valkey-server`, `dragonfly`, `GarnetServer`, `aki`,
+`kvrocks`, or `kv`); a missing binary marks that engine's cells unsupported rather than failing the
+run. The in-memory servers are redis, valkey, dragonfly, garnet (Microsoft's FASTER-based RESP
+cache-store) and kv-redis-cache, which is kv's `serve :memory:` Redis face over its in-memory
+backend, a pure RAM cache with no disk in the path. The persistent ones answer from an on-disk
+store: aki (tamnd/aki) is the durable single-file RESP server, the networked relative of the kv
+Redis layer; kvrocks (Apache Kvrocks) is the RESP face on a RocksDB LSM; and kv-redis is the kv
+Redis layer itself, tamnd/kv's `serve` Redis face over its own on-disk hash-log store. kv shows up
+twice on purpose: kv-redis-cache in Class 2 measures the same Redis face with the disk out of the
+path, kv-redis in Class 3 measures a full committed write, so the pair reads as the cost of
+durability on one engine. Dragonfly and Garnet have no native macOS build the bench uses, so they
+run on the Linux bench host. The comparison between these engines, and where kv lands among them, is
+in [docs/redis-compat.md](docs/redis-compat.md).
 
 ```
 go build -tags network_engines -o kvbench ./cmd/kvbench
-```
-
-KeyDB is kept too, but only as a labeled historical rail under the name `legacy-keydb`, double-gated
-behind the `legacy_engines` tag so a normal network build leaves it out. KeyDB's last release is
-6.3.4 and its maintenance has gone quiet, so it is not a headline competitor. For current
-Redis-family baselines use Redis 8.x, Valkey, DragonflyDB, and the Class 3 persistent servers;
-KeyDB results should not be read as representative of the actively maintained Redis-compatible
-ecosystem in 2026. Opt in with both tags when you want the historical point:
-
-```
-go build -tags "network_engines legacy_engines" -o kvbench ./cmd/kvbench
 ```
 
 All three primary tags combine in one binary:
@@ -156,8 +149,9 @@ that anyone can run and verify, use `make bench-public`; the profile and the fai
 in-process get never shares a table with a networked one no matter how many asterisks sit beside
 the numbers. Class 1 is the embedded local KV engines (the home division for kv, and the rocksdb,
 libmdbx, lmdb, pebble, badger, bbolt and Rust-rail peers); Class 2 is the Redis-compatible
-in-memory servers (redis, valkey, dragonfly, garnet); Class 3 is the Redis-compatible persistent
-servers backed by an on-disk store (aki, kvrocks, kv-redis); Class 4 is the distributed systems
+in-memory servers (redis, valkey, dragonfly, garnet, kv-redis-cache); Class 3 is the
+Redis-compatible persistent servers backed by an on-disk store (aki, kvrocks, kv-redis); Class 4 is
+the distributed systems
 under their own cluster profile. Each engine carries its class in its metadata, so the split is in
 the data, not a flag at report time.
 
