@@ -132,6 +132,10 @@ jobs:
         env:
           CGO_ENABLED: "0"
         run: go build -tags network_engines ./...
+      - name: build (legacy_engines)
+        env:
+          CGO_ENABLED: "0"
+        run: go build -tags "network_engines legacy_engines" ./...
       - name: redis smoke (Linux)
         if: runner.os == 'Linux'
         env:
