@@ -28,6 +28,42 @@ const (
 	ModeNetwork    Mode = "network"    // server over a wire protocol
 )
 
+// Class is the comparison division an engine belongs to. The published
+// leaderboard is split by class so an in-process get never shares a board with
+// a networked get, no matter how many asterisks sit beside the numbers. The
+// four classes follow Spec 2059 bench doc 12 section 3.
+type Class string
+
+const (
+	// ClassEmbedded is Class 1: a local KV engine linked into the process, or
+	// reached over a pipe to a co-located helper. The home division for kv.
+	ClassEmbedded Class = "embedded"
+	// ClassRedisMemory is Class 2: a Redis-compatible server whose keyspace is a
+	// RAM hash table, with persistence as an append log replayed on restart.
+	ClassRedisMemory Class = "redis-memory"
+	// ClassRedisPersistent is Class 3: a Redis-compatible server backed by an
+	// on-disk store, so a read or write touches that store and the data set can
+	// outgrow RAM.
+	ClassRedisPersistent Class = "redis-persistent"
+	// ClassDistributed is Class 4: a distributed KV system measured under a
+	// separate cluster profile, never on a board with the embedded engines.
+	ClassDistributed Class = "distributed"
+)
+
+// ClassOf returns the comparison class for a meta, deriving a default when the
+// adapter did not set one. Anything not reached over the network is an embedded
+// engine; a network engine that does not name its class is treated as a
+// Redis-compatible in-memory server, the common case.
+func ClassOf(m Meta) Class {
+	if m.Class != "" {
+		return m.Class
+	}
+	if m.Mode == ModeNetwork {
+		return ClassRedisMemory
+	}
+	return ClassEmbedded
+}
+
 // Capabilities declares what an engine can do. The driver uses it to decide
 // which workloads apply (an unordered engine skips range scans), and the
 // reporter uses it for the capability matrix.
@@ -52,6 +88,7 @@ type Meta struct {
 	Name      string       `json:"name"`
 	Family    Family       `json:"family"`
 	Mode      Mode         `json:"mode"`
+	Class     Class        `json:"class"` // comparison division; ClassOf fills a default when empty
 	Version   string       `json:"version"`
 	Profile   string       `json:"profile"` // default | tuned
 	Caps      Capabilities `json:"caps"`

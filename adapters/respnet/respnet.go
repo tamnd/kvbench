@@ -34,9 +34,14 @@ import (
 // FlushFn is the engine's "make it durable now" call, used by the harness Flush
 // step; leave it nil for an engine with no such command.
 type Spec struct {
-	Name      string
-	Version   string
-	Binary    string
+	Name    string
+	Version string
+	Binary  string
+	// Class is the leaderboard division the server belongs to. The in-memory
+	// servers (redis, valkey, dragonfly) are ClassRedisMemory; the persistent
+	// ones backed by an on-disk store (aki, kv-redis) are ClassRedisPersistent.
+	// Empty falls back to ClassRedisMemory through engine.ClassOf.
+	Class     engine.Class
 	ArgsFn    func(cfg engine.Config, sock string) []string
 	FlushFn   func(ctx context.Context, cli *goredis.Client) error
 	Asterisks []engine.Asterisk
@@ -94,6 +99,7 @@ type eng struct {
 func (e *eng) Meta() engine.Meta {
 	return engine.Meta{
 		Name: e.spec.Name, Family: engine.FamilyHashLog, Mode: engine.ModeNetwork,
+		Class:   e.spec.Class,
 		Version: e.spec.Version,
 		Caps: engine.Capabilities{
 			Ordered: false, AtomicBatch: true, Durable: true,

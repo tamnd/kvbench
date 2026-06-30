@@ -21,6 +21,7 @@ func init() {
 			Name:    "valkey",
 			Version: "9.1-on-path",
 			Binary:  "valkey-server",
+			Class:   engine.ClassRedisMemory,
 			ArgsFn:  respnet.RedisDialectArgs,
 			FlushFn: respnet.FlushAOF,
 			Asterisks: []engine.Asterisk{

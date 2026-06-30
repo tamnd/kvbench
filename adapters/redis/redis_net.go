@@ -25,6 +25,7 @@ func init() {
 			Name:    "redis",
 			Version: "8.8-on-path",
 			Binary:  "redis-server",
+			Class:   engine.ClassRedisMemory,
 			ArgsFn:  respnet.RedisDialectArgs,
 			FlushFn: respnet.FlushAOF,
 			Asterisks: []engine.Asterisk{

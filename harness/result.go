@@ -18,6 +18,7 @@ type Result struct {
 		Name    string              `json:"name"`
 		Family  string              `json:"family"`
 		Mode    string              `json:"mode"`
+		Class   string              `json:"class"`
 		Version string              `json:"version"`
 		Profile string              `json:"profile"`
 		Caps    engine.Capabilities `json:"caps"`

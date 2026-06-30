@@ -9,8 +9,56 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tamnd/kvbench/engine"
 	"github.com/tamnd/kvbench/harness"
 )
+
+// classOrder is the published order of the leaderboard divisions. The board is
+// split by class so an in-process get never shares a table with a networked get;
+// see Spec 2059 bench doc 12 section 3.
+var classOrder = []engine.Class{
+	engine.ClassEmbedded,
+	engine.ClassRedisMemory,
+	engine.ClassRedisPersistent,
+	engine.ClassDistributed,
+}
+
+var classTitle = map[engine.Class]string{
+	engine.ClassEmbedded:        "Class 1: embedded local KV engines",
+	engine.ClassRedisMemory:     "Class 2: Redis-compatible in-memory servers",
+	engine.ClassRedisPersistent: "Class 3: Redis-compatible persistent servers",
+	engine.ClassDistributed:     "Class 4: distributed KV systems",
+}
+
+// classOf reads the class a result was tagged with, deriving one for results
+// written before the engine carried a class: a networked engine defaults to the
+// in-memory Redis class, everything else to embedded, matching engine.ClassOf.
+func classOf(r harness.Result) engine.Class {
+	if r.Engine.Class != "" {
+		return engine.Class(r.Engine.Class)
+	}
+	if r.Engine.Mode == string(engine.ModeNetwork) {
+		return engine.ClassRedisMemory
+	}
+	return engine.ClassEmbedded
+}
+
+// groupByClass splits results into divisions, returning the classes present in
+// published order so an empty class is skipped.
+func groupByClass(rs []harness.Result) ([]engine.Class, map[engine.Class][]harness.Result) {
+	m := map[engine.Class][]harness.Result{}
+	for _, r := range rs {
+		c := classOf(r)
+		m[c] = append(m[c], r)
+	}
+	var present []engine.Class
+	for _, c := range classOrder {
+		if len(m[c]) > 0 {
+			present = append(present, c)
+		}
+	}
+	return present, m
+}
 
 func cmdReport(args []string) {
 	in := ""
@@ -62,21 +110,25 @@ func loadResults(dir string) []harness.Result {
 }
 
 func printTables(rs []harness.Result) {
-	byWl := groupByWorkload(rs)
-	for _, wl := range sortedKeys(byWl) {
-		fmt.Printf("\n== %s ==\n", wl)
-		rows := byWl[wl]
-		sort.Slice(rows, func(i, j int) bool { return rows[i].Throughput.SustainedOps > rows[j].Throughput.SustainedOps })
-		fmt.Printf("%-12s %14s %10s %10s %10s %8s\n", "engine", "ops/sec", "p50", "p99", "p99.9", "spaceAmp")
-		for _, r := range rows {
-			if r.Error != "" {
-				fmt.Printf("%-12s  %s\n", r.Engine.Name, r.Error)
-				continue
+	classes, byClass := groupByClass(rs)
+	for _, c := range classes {
+		fmt.Printf("\n######## %s ########\n", classTitle[c])
+		byWl := groupByWorkload(byClass[c])
+		for _, wl := range sortedKeys(byWl) {
+			fmt.Printf("\n== %s ==\n", wl)
+			rows := byWl[wl]
+			sort.Slice(rows, func(i, j int) bool { return rows[i].Throughput.SustainedOps > rows[j].Throughput.SustainedOps })
+			fmt.Printf("%-12s %14s %10s %10s %10s %8s\n", "engine", "ops/sec", "p50", "p99", "p99.9", "spaceAmp")
+			for _, r := range rows {
+				if r.Error != "" {
+					fmt.Printf("%-12s  %s\n", r.Engine.Name, r.Error)
+					continue
+				}
+				fmt.Printf("%-12s %14.0f %10s %10s %10s %8s\n",
+					r.Engine.Name, r.Throughput.SustainedOps,
+					ns(r.LatencyNs.P50), ns(r.LatencyNs.P99), ns(r.LatencyNs.P999),
+					amp(r.Amplification.SpaceAmp))
 			}
-			fmt.Printf("%-12s %14.0f %10s %10s %10s %8s\n",
-				r.Engine.Name, r.Throughput.SustainedOps,
-				ns(r.LatencyNs.P50), ns(r.LatencyNs.P99), ns(r.LatencyNs.P999),
-				amp(r.Amplification.SpaceAmp))
 		}
 	}
 }
@@ -89,31 +141,36 @@ func RenderMarkdown(rs []harness.Result) string {
 	fmt.Fprintf(&b, "- Host: %s %s/%s, %d CPU, %s\n", env.CPUModel, env.OS, env.Arch, env.NumCPU, humanBytes(env.MemBytes))
 	fmt.Fprintf(&b, "- Go: %s, GOMAXPROCS=%d\n", env.GoVersion, env.GOMAXPROCS)
 	fmt.Fprintf(&b, "- kvbench: %s\n\n", rs[0].Kvbench)
+	fmt.Fprintf(&b, "The board is split into the four comparison classes, scored separately so an in-process get never shares a table with a networked get.\n\n")
 
-	byWl := groupByWorkload(rs)
-	for _, wl := range sortedKeys(byWl) {
-		rows := byWl[wl]
-		sort.Slice(rows, func(i, j int) bool {
-			if rows[i].Error != "" || rows[j].Error != "" {
-				return rows[i].Error == "" && rows[j].Error != ""
+	classes, byClass := groupByClass(rs)
+	for _, c := range classes {
+		fmt.Fprintf(&b, "## %s\n\n", classTitle[c])
+		byWl := groupByWorkload(byClass[c])
+		for _, wl := range sortedKeys(byWl) {
+			rows := byWl[wl]
+			sort.Slice(rows, func(i, j int) bool {
+				if rows[i].Error != "" || rows[j].Error != "" {
+					return rows[i].Error == "" && rows[j].Error != ""
+				}
+				return rows[i].Throughput.SustainedOps > rows[j].Throughput.SustainedOps
+			})
+			fmt.Fprintf(&b, "### %s\n\n", wl)
+			fmt.Fprintf(&b, "| engine | family | mode | ops/sec | p50 | p99 | p99.9 | max | space-amp | GC p99 |\n")
+			fmt.Fprintf(&b, "|--------|--------|------|--------:|----:|----:|------:|----:|----------:|-------:|\n")
+			for _, r := range rows {
+				if r.Error != "" {
+					fmt.Fprintf(&b, "| %s | %s | %s | _%s_ | | | | | | |\n", r.Engine.Name, r.Engine.Family, r.Engine.Mode, mdEsc(r.Error))
+					continue
+				}
+				fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+					r.Engine.Name, r.Engine.Family, r.Engine.Mode,
+					comma(r.Throughput.SustainedOps),
+					ns(r.LatencyNs.P50), ns(r.LatencyNs.P99), ns(r.LatencyNs.P999), ns(r.LatencyNs.Max),
+					amp(r.Amplification.SpaceAmp), gcns(r.GoRuntime.GCPauseP99Ns))
 			}
-			return rows[i].Throughput.SustainedOps > rows[j].Throughput.SustainedOps
-		})
-		fmt.Fprintf(&b, "### %s\n\n", wl)
-		fmt.Fprintf(&b, "| engine | family | mode | ops/sec | p50 | p99 | p99.9 | max | space-amp | GC p99 |\n")
-		fmt.Fprintf(&b, "|--------|--------|------|--------:|----:|----:|------:|----:|----------:|-------:|\n")
-		for _, r := range rows {
-			if r.Error != "" {
-				fmt.Fprintf(&b, "| %s | %s | %s | _%s_ | | | | | | |\n", r.Engine.Name, r.Engine.Family, r.Engine.Mode, mdEsc(r.Error))
-				continue
-			}
-			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
-				r.Engine.Name, r.Engine.Family, r.Engine.Mode,
-				comma(r.Throughput.SustainedOps),
-				ns(r.LatencyNs.P50), ns(r.LatencyNs.P99), ns(r.LatencyNs.P999), ns(r.LatencyNs.Max),
-				amp(r.Amplification.SpaceAmp), gcns(r.GoRuntime.GCPauseP99Ns))
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
 	}
 	return b.String()
 }
