@@ -93,6 +93,12 @@ type Meta struct {
 	Profile   string       `json:"profile"` // default | tuned
 	Caps      Capabilities `json:"caps"`
 	Asterisks []Asterisk   `json:"asterisks"`
+	// Reference marks an engine that is not a peer to the real stores: an
+	// in-memory ceiling, the devnull floor, or a bare kv core shown without its
+	// DB shell. Reference engines stay runnable by name but are left out of the
+	// default sweep and the published board so they cannot be mistaken for a
+	// shippable store.
+	Reference bool `json:"reference,omitempty"`
 }
 
 // Config is passed to Open. Embedded engines use Dir; network engines use Addr.

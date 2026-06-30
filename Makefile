@@ -43,29 +43,25 @@ tidy:
 vuln:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest $(PKG)
 
-# A fast end-to-end check that the harness still runs: a tiny sweep over the
-# in-memory floor and ceilings plus the kv cores, durability off.
+# A fast end-to-end check that the harness still runs: a tiny sweep over a few
+# real engines, durability off.
 smoke: bin/kvbench
 	./bin/kvbench run \
-		--engines devnull,swiss,otter,faster,kv-btree,kv-lsm,kv-betree \
+		--engines kv,bbolt,pebble,badger \
 		--workloads readrandom,fillrandom \
 		--durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
 		--out results/smoke
 
-# The pinned public profile: the recognized YCSB A-F and db_bench workloads at a
-# fixed seed and fixed sizes, every engine at its shipped durability (DEFAULT), so
-# anyone can reproduce the same matrix and verify the numbers. The generators are
-# deterministic and the dependency versions are locked in go.sum, so the only
-# variable left is the hardware. See docs/public-benchmark.md for the full
-# definition and how to read the result. Override OUT= to pick a results dir.
+# The portable public profile: the same matrix every host runs, in a single
+# durability mode shared by every engine so the numbers are directly comparable.
+# It is two passes (a raw read/write board with the disk flush off, then a small
+# durable pass with a flush on every commit), both deterministic from a fixed
+# seed, so the only variable left is the hardware. The fairness model is at
+# https://kvbench.tamnd.com/methodology/ . The runner is scripts/bench-profile.sh;
+# override OUT= to pick a results dir.
 PUBLIC_OUT ?= results/public
 bench-public: bin/kvbench
-	./bin/kvbench run \
-		--workloads fillseq,fillrandom,overwrite,readrandom,readseq,deleterandom,ycsb-a,ycsb-b,ycsb-c,ycsb-d,ycsb-e,ycsb-f \
-		--regimes cache-resident \
-		--durability DEFAULT \
-		--values 1024 --conc 8 --cardinality 100000 --ops 200000 --reps 3 --seed 42 \
-		--out $(PUBLIC_OUT)
+	scripts/bench-profile.sh ./bin/kvbench $(PUBLIC_OUT)
 	./bin/kvbench report --in $(PUBLIC_OUT) --md
 
 # Build the cgo-only adapters too, so that path keeps compiling.

@@ -49,6 +49,25 @@ func Names() []string {
 	return out
 }
 
+// DefaultNames lists the engines that make up the default sweep and the
+// published board: every compiled-in engine except the reference rails (the
+// in-memory ceilings, the devnull floor, and the bare kv cores). Reference
+// engines stay runnable when named explicitly; they just never stand in a
+// table next to a real store.
+func DefaultNames() []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]string, 0, len(registry))
+	for n, f := range registry {
+		if f().Meta().Reference {
+			continue
+		}
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Has reports whether an engine is available in this binary.
 func Has(name string) bool {
 	mu.RLock()

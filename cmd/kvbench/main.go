@@ -66,7 +66,8 @@ usage:
   kvbench compare --kv <kv-results-dir> --baseline <baseline-results-dir> [--exclude eng,eng] [--md]
 
 run flags:
-  --engines a,b,c   engines to run (default: all built-in)
+  --engines a,b,c   engines to run (default: all built-in real stores; the
+                    reference rails are skipped unless named explicitly)
   --workloads a,b   workloads (default: all)
   --regimes a,b     cache-resident,out-of-cache (default: cache-resident)
   --durability a,b  DEFAULT,OFF,NORMAL,FULL (default: DEFAULT, each engine as it ships)
@@ -101,6 +102,9 @@ func cmdList() {
 		if m.Caps.Durable {
 			caps = append(caps, "durable")
 		}
+		if m.Reference {
+			caps = append(caps, "reference")
+		}
 		fmt.Printf("%-12s %-10s %-9s %-18s %s\n", m.Name, m.Family, m.Mode, m.Version, strings.Join(caps, ","))
 	}
 }
@@ -132,7 +136,7 @@ func cmdRun(args []string) {
 	}
 	parse(args, &f)
 	if len(f.engines) == 0 {
-		f.engines = engine.Names()
+		f.engines = engine.DefaultNames()
 	}
 	if len(f.workloads) == 0 {
 		f.workloads = sortedWorkloads()

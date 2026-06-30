@@ -1,0 +1,10 @@
+title       = "kvbench"
+baseURL     = "https://kvbench.tamnd.com/"
+description = "kvbench is a neutral benchmark for embedded and networked key/value stores. It runs every engine through one identical harness and reports throughput, full latency distributions, and space cost, so you can pick a store on real numbers instead of folklore."
+contentDir  = "content"
+outputDir   = "public"
+theme       = "tago-doks"
+syntaxHighlight = "true"
+
+[params]
+github = "https://github.com/tamnd/kvbench"
