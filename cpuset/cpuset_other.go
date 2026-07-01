@@ -7,9 +7,11 @@ package cpuset
 // another platform cannot pin the two sides apart.
 func Available() bool { return false }
 
-// PinSelf is a no-op off Linux. It never re-execs and reports no error, so the
-// caller runs the load generator unpinned.
-func PinSelf(list string) (reexeced bool, err error) { return false, nil }
+// Split is a no-op off Linux. It never re-execs and reports no split in effect,
+// so the caller runs the load generator co-located with the server.
+func Split(serverList, clientList string) (server, client string, active bool, err error) {
+	return "", "", false, nil
+}
 
 // ServerWrap returns the launch command unchanged off Linux.
 func ServerWrap(list, bin string, args []string) (string, []string) { return bin, args }

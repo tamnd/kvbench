@@ -240,11 +240,12 @@ func cmdRun(args []string) {
 // resolveCPUSplit applies the --cpu-split flag and returns the taskset core list
 // the network servers should be pinned to, or "" for no split. When a split is
 // asked for it pins this process (and so the go-redis client) to the client half
-// with cpuset.PinSelf, which re-execs under taskset on Linux and does not return
-// on that first pass. The core list is taken from --cpu-server and --cpu-client
-// when both are given, otherwise it is derived from the core count with a balanced
-// half-and-half partition. Off Linux, or with taskset missing, it prints why the
-// split cannot apply and returns "" so the run continues co-located.
+// with cpuset.Split, which re-execs under taskset on Linux and does not return on
+// that first pass; the second pass returns the server list. The core lists come
+// from --cpu-server and --cpu-client when both are given, otherwise cpuset.Split
+// derives a balanced half-and-half partition from the full core count. Off Linux,
+// or with taskset missing, it prints why the split cannot apply and returns "" so
+// the run continues co-located.
 func resolveCPUSplit(f *runFlags) string {
 	if !f.cpuSplit {
 		return ""
@@ -253,24 +254,17 @@ func resolveCPUSplit(f *runFlags) string {
 		fmt.Fprintln(os.Stderr, "--cpu-split needs Linux with taskset on PATH; running co-located instead")
 		return ""
 	}
-	serverList, clientList := f.cpuServer, f.cpuClient
-	if serverList == "" || clientList == "" {
-		s, c, err := cpuset.Partition(runtime.NumCPU(), cpuset.DefaultClientCores(runtime.NumCPU()))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "--cpu-split: %v; running co-located instead\n", err)
-			return ""
-		}
-		serverList, clientList = s, c
+	server, client, active, err := cpuset.Split(f.cpuServer, f.cpuClient)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "--cpu-split: %v; running co-located instead\n", err)
+		return ""
 	}
-	if _, err := cpuset.PinSelf(clientList); err != nil {
-		// Could not pin the client. Still confine the server so it at least has a
-		// fixed budget, and say the client is unpinned rather than pretend a clean split.
-		fmt.Fprintf(os.Stderr, "--cpu-split: could not pin client to %s: %v; server pinned to %s, client unpinned\n", clientList, err, serverList)
-		return serverList
+	if !active {
+		return ""
 	}
 	// This line prints only on the pinned second pass; the first pass re-exec'd away.
-	fmt.Printf("cpu-split: server cores %s, client cores %s (GOMAXPROCS=%d)\n", serverList, clientList, runtime.GOMAXPROCS(0))
-	return serverList
+	fmt.Printf("cpu-split: server cores %s, client cores %s (GOMAXPROCS=%d)\n", server, client, runtime.GOMAXPROCS(0))
+	return server
 }
 
 // runReps runs a cell N times and aggregates: throughput median/min/max,

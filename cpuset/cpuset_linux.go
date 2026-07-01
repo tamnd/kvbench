@@ -9,9 +9,17 @@ import (
 	"syscall"
 )
 
-// pinnedEnv guards against an infinite re-exec loop. The first pass sets it
-// before exec'ing under taskset; the second pass sees it and skips the re-exec.
-const pinnedEnv = "KVBENCH_CPU_PINNED"
+// The guard and carry environment variables. The first pass sets all three
+// before exec'ing under taskset: pinnedEnv breaks the re-exec loop, and the two
+// list variables carry the partition chosen from the full core count into the
+// re-exec'd process. The second pass must not re-derive the split, because under
+// taskset it now sees only the restricted cores and would pick a wrong, smaller
+// partition; it reads the chosen lists back from these variables instead.
+const (
+	pinnedEnv = "KVBENCH_CPU_PINNED"
+	serverEnv = "KVBENCH_CPU_SERVER"
+	clientEnv = "KVBENCH_CPU_CLIENT"
+)
 
 // Available reports whether CPU partitioning can be applied here: this is Linux
 // and the taskset tool is on PATH.
@@ -20,38 +28,50 @@ func Available() bool {
 	return err == nil
 }
 
-// PinSelf confines the kvbench process to the cores named by list and returns
-// whether it re-exec'd to do so. On the first call it replaces the process image
-// with "taskset -c <list> <self> <same args>", so every OS thread the Go runtime
-// later spawns inherits the affinity mask. That call does not return on success.
-// On the second pass, recognized by the guard environment variable, it sets
-// GOMAXPROCS to the number of pinned cores so the scheduler does not oversubscribe
-// the partition, and returns false.
+// Split pins the current process, and so the go-redis client it runs, to a client
+// core set and returns the disjoint server set that launched RESP servers are
+// pinned to. serverList and clientList override the balanced partition when both
+// are given; otherwise the split is derived from the full core count.
 //
-// A re-exec failure is returned to the caller, which can carry on unpinned rather
-// than abort the run.
-func PinSelf(list string) (reexeced bool, err error) {
+// On the first pass it replaces the process image with "taskset -c <client> <self>
+// <same args>", carrying the chosen lists in the environment, so every OS thread
+// the Go runtime later spawns inherits the client affinity mask. That call does
+// not return on success. The re-exec'd second pass, recognized by the guard
+// variable, reads the lists back, sets GOMAXPROCS to the client core count so the
+// scheduler does not oversubscribe the partition, and returns active true.
+//
+// A re-exec failure is returned to the caller, which can carry on co-located
+// rather than abort the run.
+func Split(serverList, clientList string) (server, client string, active bool, err error) {
 	if os.Getenv(pinnedEnv) != "" {
-		if n, cerr := Count(list); cerr == nil && n > 0 {
+		server, client = os.Getenv(serverEnv), os.Getenv(clientEnv)
+		if n, cerr := Count(client); cerr == nil && n > 0 {
 			runtime.GOMAXPROCS(n)
 		}
-		return false, nil
+		return server, client, true, nil
+	}
+	if serverList == "" || clientList == "" {
+		s, c, derr := Partition(runtime.NumCPU(), DefaultClientCores(runtime.NumCPU()))
+		if derr != nil {
+			return "", "", false, derr
+		}
+		serverList, clientList = s, c
 	}
 	taskset, err := exec.LookPath("taskset")
 	if err != nil {
-		return false, err
+		return "", "", false, err
 	}
 	self, err := os.Executable()
 	if err != nil {
-		return false, err
+		return "", "", false, err
 	}
-	argv := append([]string{"taskset", "-c", list, self}, os.Args[1:]...)
-	env := append(os.Environ(), pinnedEnv+"=1")
+	argv := append([]string{"taskset", "-c", clientList, self}, os.Args[1:]...)
+	env := append(os.Environ(), pinnedEnv+"=1", serverEnv+"="+serverList, clientEnv+"="+clientList)
 	// Exec replaces this image; on success it never returns.
 	if err := syscall.Exec(taskset, argv, env); err != nil {
-		return false, err
+		return "", "", false, err
 	}
-	return true, nil
+	return serverList, clientList, true, nil
 }
 
 // ServerWrap rewrites a launch command so the server runs pinned to the cores
