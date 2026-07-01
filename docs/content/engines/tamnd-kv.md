@@ -9,7 +9,7 @@ weight: 10
 **Repository:** [github.com/tamnd/kv](https://github.com/tamnd/kv)
 
 tamnd/kv is the engine this benchmark was built to keep honest, and it runs through the same adapter as every other store with no special path.
-The benchmark measures its storage core, the hlog engine: a sharded resident hash index over a hybrid log, with an in-memory hot tier that absorbs recent writes and a cold tail that spills to a single file.
+The benchmark measures its hash-log storage core: a sharded resident hash index over a hybrid log, with an in-memory hot tier that absorbs recent writes and a cold tail that spills to a single file.
 The key index lives in RAM and the values run larger than memory on disk, the F2-style split that makes point access one index probe and, on a cold-tier hit, one seek.
 
 The headline used to be reads alone.

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+	"github.com/tamnd/kvbench/cpuset"
 	"github.com/tamnd/kvbench/engine"
 )
 
@@ -55,18 +56,17 @@ func New(spec Spec) engine.Engine { return &eng{spec: spec} }
 
 // RedisDialectArgs builds the server argv for a redis-flag-dialect server. Redis,
 // valkey and aki all accept the same spelling: --port, --unixsocket, --dir,
-// --save, --appendonly and --appendfsync. It maps the durability contract onto
-// the append-only file: OFF turns the AOF off so the write path shows with no
-// per-commit sync, NORMAL and DEFAULT leave it on with the once-a-second fsync
-// that is the out-of-box default, and FULL fsyncs on every command. TCP is
-// disabled with --port 0 so only the private unix socket is open.
+// --save, --appendonly and --appendfsync. The network class is an everysec
+// comparison, so the AOF stays on with the once-a-second fsync that is every one
+// of these servers' shipped default. OFF turns the AOF off so the raw write path
+// shows with no per-commit sync. FULL never reaches here: the harness skips the
+// per-commit regime for networked engines, since appendfsync always over a socket
+// is a mode nobody deploys. TCP is disabled with --port 0 so only the private unix
+// socket is open.
 func RedisDialectArgs(cfg engine.Config, sock string) []string {
-	appendonly, fsync := "yes", "everysec"
-	switch cfg.Synchronous {
-	case "OFF":
+	appendonly := "yes"
+	if cfg.Synchronous == "OFF" {
 		appendonly = "no"
-	case "FULL":
-		fsync = "always"
 	}
 	return []string{
 		"--port", "0",
@@ -74,7 +74,7 @@ func RedisDialectArgs(cfg engine.Config, sock string) []string {
 		"--dir", cfg.Dir,
 		"--save", "",
 		"--appendonly", appendonly,
-		"--appendfsync", fsync,
+		"--appendfsync", "everysec",
 	}
 }
 
@@ -115,7 +115,12 @@ func (e *eng) Open(ctx context.Context, cfg engine.Config) error {
 		return errors.New(e.spec.Binary + " not found on PATH")
 	}
 	e.sock = filepath.Join("/tmp", "kvbr-"+e.spec.Name+"-"+strconv.Itoa(os.Getpid())+"-"+strconv.FormatUint(sockSeq.Add(1), 10)+".sock")
-	cmd := exec.Command(bin, e.spec.ArgsFn(cfg, e.sock)...)
+	// When --cpu-split is on the harness pins itself (and so the go-redis client)
+	// to one core set and hands the server a disjoint one, so the two never fight
+	// for a core. ServerWrap folds the launch under taskset for that server set; it
+	// is a no-op when the list is empty or taskset is absent.
+	launchBin, launchArgs := cpuset.ServerWrap(cfg.ServerCPUList, bin, e.spec.ArgsFn(cfg, e.sock))
+	cmd := exec.Command(launchBin, launchArgs...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {

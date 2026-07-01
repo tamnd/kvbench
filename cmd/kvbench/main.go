@@ -10,10 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/tamnd/kvbench/cpuset"
 	"github.com/tamnd/kvbench/engine"
 	"github.com/tamnd/kvbench/harness"
 	"github.com/tamnd/kvbench/hdr"
@@ -23,7 +25,6 @@ import (
 	_ "github.com/tamnd/kvbench/adapters/badger"
 	_ "github.com/tamnd/kvbench/adapters/bbolt"
 	_ "github.com/tamnd/kvbench/adapters/buntdb"
-	_ "github.com/tamnd/kvbench/adapters/f2"
 	_ "github.com/tamnd/kvbench/adapters/goleveldb"
 	_ "github.com/tamnd/kvbench/adapters/inmem"
 	_ "github.com/tamnd/kvbench/adapters/kv"
@@ -72,8 +73,10 @@ run flags:
   --regimes a,b     cache-resident,out-of-cache (default: cache-resident)
   --durability a,b  DEFAULT,FULL (default: DEFAULT). DEFAULT is each engine as it
                     ships, its own background durability; FULL forces per-commit
-                    fsync on every engine. Both are durable, they differ in when
-                    the fsync lands, not whether one happens.
+                    fsync on every embedded engine. Both are durable, they differ
+                    in when the fsync lands, not whether one happens. FULL is the
+                    embedded class only: networked RESP servers always run everysec,
+                    so a FULL cell for one is skipped, not run mislabeled.
   --values a,b      value sizes in bytes (default: 1024)
   --conc a,b        concurrency levels (default: 8)
   --cardinality N   keys to load (default: 100000)
@@ -81,6 +84,14 @@ run flags:
   --reps N          repetitions per cell (default: 3)
   --seed N          base seed (default: 1)
   --out DIR         results dir (default: results/run-<seed>)
+  --cpu-split       pin the network server and the go-redis client to disjoint
+                    cores (Linux, needs taskset) so the co-located client cannot
+                    steal the server's cores. Use it for a RESP-only run; embedded
+                    engines share this process's cores regardless.
+  --cpu-server L    taskset -c core list for the server half of --cpu-split (e.g.
+                    0-2). Empty auto-derives a balanced split from the core count.
+  --cpu-client L    taskset -c core list for the client half of --cpu-split (e.g.
+                    3-5). Empty auto-derives a balanced split from the core count.
 `)
 }
 
@@ -124,6 +135,9 @@ type runFlags struct {
 	reps        int
 	seed        uint64
 	out         string
+	cpuSplit    bool
+	cpuServer   string
+	cpuClient   string
 }
 
 func cmdRun(args []string) {
@@ -144,6 +158,15 @@ func cmdRun(args []string) {
 	if len(f.workloads) == 0 {
 		f.workloads = sortedWorkloads()
 	}
+
+	// --cpu-split pins the harness (and so the go-redis client) to one core set and
+	// hands each launched network server a disjoint set, so the load generator can
+	// never steal the cores the server needs. This only matters for the network
+	// class; embedded engines run in this same process and share its cores either
+	// way, so use it for a RESP-only run. serverCPUList is the server half; it rides
+	// into each cell's config and reaches the launcher through cpuset.ServerWrap.
+	serverCPUList := resolveCPUSplit(&f)
+
 	if f.out == "" {
 		f.out = fmt.Sprintf("results/run-%d", f.seed)
 	}
@@ -180,19 +203,20 @@ func cmdRun(args []string) {
 							done++
 							cache := cacheFor(regime, f.cardinality, val)
 							cell := harness.CellConfig{
-								EngineName:  en,
-								Workload:    spec,
-								Regime:      regime,
-								Profile:     "tuned",
-								Durability:  dur,
-								Concurrency: c,
-								ValueBytes:  val,
-								Cardinality: f.cardinality,
-								Operations:  f.ops,
-								Seed:        f.seed,
-								RunID:       runID,
-								DataRoot:    dataRoot,
-								CacheBytes:  cache,
+								EngineName:    en,
+								Workload:      spec,
+								Regime:        regime,
+								Profile:       "tuned",
+								Durability:    dur,
+								Concurrency:   c,
+								ValueBytes:    val,
+								Cardinality:   f.cardinality,
+								Operations:    f.ops,
+								Seed:          f.seed,
+								RunID:         runID,
+								DataRoot:      dataRoot,
+								CacheBytes:    cache,
+								ServerCPUList: serverCPUList,
 							}
 							res := runReps(ctx, cell, f.reps)
 							all = append(all, res)
@@ -211,6 +235,36 @@ func cmdRun(args []string) {
 		}
 	}
 	fmt.Printf("\ndone: %d cells in %s -> %s\n", len(all), time.Since(start).Round(time.Second), f.out)
+}
+
+// resolveCPUSplit applies the --cpu-split flag and returns the taskset core list
+// the network servers should be pinned to, or "" for no split. When a split is
+// asked for it pins this process (and so the go-redis client) to the client half
+// with cpuset.Split, which re-execs under taskset on Linux and does not return on
+// that first pass; the second pass returns the server list. The core lists come
+// from --cpu-server and --cpu-client when both are given, otherwise cpuset.Split
+// derives a balanced half-and-half partition from the full core count. Off Linux,
+// or with taskset missing, it prints why the split cannot apply and returns "" so
+// the run continues co-located.
+func resolveCPUSplit(f *runFlags) string {
+	if !f.cpuSplit {
+		return ""
+	}
+	if !cpuset.Available() {
+		fmt.Fprintln(os.Stderr, "--cpu-split needs Linux with taskset on PATH; running co-located instead")
+		return ""
+	}
+	server, client, active, err := cpuset.Split(f.cpuServer, f.cpuClient)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "--cpu-split: %v; running co-located instead\n", err)
+		return ""
+	}
+	if !active {
+		return ""
+	}
+	// This line prints only on the pinned second pass; the first pass re-exec'd away.
+	fmt.Printf("cpu-split: server cores %s, client cores %s (GOMAXPROCS=%d)\n", server, client, runtime.GOMAXPROCS(0))
+	return server
 }
 
 // runReps runs a cell N times and aggregates: throughput median/min/max,
@@ -327,6 +381,12 @@ func parse(args []string, f *runFlags) {
 			f.seed = uint64(atoi(next()))
 		case "--out":
 			f.out = next()
+		case "--cpu-split":
+			f.cpuSplit = true
+		case "--cpu-server":
+			f.cpuServer = next()
+		case "--cpu-client":
+			f.cpuClient = next()
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag %q\n", a)
 		}
