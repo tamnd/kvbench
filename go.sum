@@ -123,8 +123,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/syndtr/goleveldb v1.0.0 h1:fBdIW9lB4Iz0n9khmH8w27SJ3QEJ7+IgjPEwGSZiFdE=
 github.com/syndtr/goleveldb v1.0.0/go.mod h1:ZVVdQEZoIme9iO1Ch2Jdy24qqXrMMOU6lpPAyBWyWuQ=
-github.com/tamnd/kv v0.2.1-0.20260629173905-a4ffdb637cad h1:LLgSjkZfK++kmYI97XOvdOSF2AmJgvAkjXiAx7WrFyo=
-github.com/tamnd/kv v0.2.1-0.20260629173905-a4ffdb637cad/go.mod h1:0IvyP4MiHgVNshW348xdPB+2KMwxnndvZbbKroSDqmQ=
+github.com/tamnd/kv v0.3.2-0.20260701033946-ae6bb6ba1b74 h1:cujS1LpP3OOUvtkqkJOxflPPr2sf1oOA+G1XM3Vo2Qc=
+github.com/tamnd/kv v0.3.2-0.20260701033946-ae6bb6ba1b74/go.mod h1:0IvyP4MiHgVNshW348xdPB+2KMwxnndvZbbKroSDqmQ=
 github.com/tidwall/assert v0.1.0 h1:aWcKyRBUAdLoVebxo95N7+YZVTFF/ASTr7BN4sLP6XI=
 github.com/tidwall/assert v0.1.0/go.mod h1:QLYtGyeqse53vuELQheYl9dngGCJQ+mTtlxcktb+Kj8=
 github.com/tidwall/btree v1.4.2 h1:PpkaieETJMUxYNADsjgtNRcERX7mGc/GP2zp/r5FM3g=

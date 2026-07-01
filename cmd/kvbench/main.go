@@ -70,7 +70,10 @@ run flags:
                     reference rails are skipped unless named explicitly)
   --workloads a,b   workloads (default: all)
   --regimes a,b     cache-resident,out-of-cache (default: cache-resident)
-  --durability a,b  DEFAULT,OFF,NORMAL,FULL (default: DEFAULT, each engine as it ships)
+  --durability a,b  DEFAULT,FULL (default: DEFAULT). DEFAULT is each engine as it
+                    ships, its own background durability; FULL forces per-commit
+                    fsync on every engine. Both are durable, they differ in when
+                    the fsync lands, not whether one happens.
   --values a,b      value sizes in bytes (default: 1024)
   --conc a,b        concurrency levels (default: 8)
   --cardinality N   keys to load (default: 100000)
@@ -309,7 +312,7 @@ func parse(args []string, f *runFlags) {
 		case "--regimes":
 			f.regimes = splitCSV(next())
 		case "--durability":
-			f.durability = splitCSV(next())
+			f.durability = normalizeDurability(splitCSV(next()))
 		case "--values":
 			f.values = splitCSVInt(next())
 		case "--conc":
@@ -328,6 +331,29 @@ func parse(args []string, f *runFlags) {
 			fmt.Fprintf(os.Stderr, "unknown flag %q\n", a)
 		}
 	}
+}
+
+// normalizeDurability keeps the durability axis to the two regimes the benchmark exposes,
+// DEFAULT and FULL. Both are durable: DEFAULT runs each engine at its own shipped durability,
+// FULL forces a per-commit fsync on every engine. The older OFF and NORMAL names are gone
+// because they read as "durability off" when they were not, so a caller who passes one gets a
+// clear pointer to the two names that remain rather than a silently mismapped run.
+func normalizeDurability(vals []string) []string {
+	out := vals[:0]
+	for _, v := range vals {
+		u := strings.ToUpper(strings.TrimSpace(v))
+		switch u {
+		case "DEFAULT", "FULL":
+			out = append(out, u)
+		case "OFF", "NORMAL":
+			fmt.Fprintf(os.Stderr, "durability %q is no longer a regime; use DEFAULT (each engine as it ships) or FULL (per-commit fsync)\n", v)
+			os.Exit(2)
+		default:
+			fmt.Fprintf(os.Stderr, "unknown durability %q; use DEFAULT or FULL\n", v)
+			os.Exit(2)
+		}
+	}
+	return out
 }
 
 func splitCSV(s string) []string {

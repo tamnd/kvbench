@@ -25,7 +25,7 @@ type CellConfig struct {
 	Workload    workload.Spec
 	Regime      string // cache-resident | out-of-cache
 	Profile     string // default | tuned
-	Durability  string // OFF | NORMAL | FULL
+	Durability  string // DEFAULT | FULL
 	Concurrency int
 	ValueBytes  int
 	Cardinality uint64 // keys to load
@@ -100,6 +100,7 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		Synchronous: c.Durability,
 		CacheBytes:  c.CacheBytes,
 		ValueBytes:  c.ValueBytes,
+		Cardinality: c.Cardinality,
 	}
 	if err := eng.Open(ctx, cfg); err != nil {
 		r.Error = "open: " + err.Error()
@@ -178,10 +179,10 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		}
 	}
 
-	// DEFAULT and OFF request no specific durability, so a non-durable engine is
-	// simply running as it ships and needs no caveat. NORMAL and FULL are explicit
-	// durability requests this engine cannot honor, which the reader must know.
-	if !meta.Caps.Durable && (c.Durability == "NORMAL" || c.Durability == "FULL") {
+	// DEFAULT lets each engine run at its own shipped durability, so a non-durable engine
+	// needs no caveat there. FULL is an explicit per-commit fsync request that this engine
+	// cannot honor, which the reader must know.
+	if !meta.Caps.Durable && c.Durability == "FULL" {
 		r.Asterisks = append(r.Asterisks, engine.Asterisk{Code: "no-fsync", Note: "engine cannot fsync; durability requested but not delivered"})
 	}
 	return r
