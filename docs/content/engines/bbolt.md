@@ -16,15 +16,15 @@ Because neighbouring keys sit in neighbouring pages, an ordered scan is close to
 
 ## Best at
 
-- **Ordered scans.** 766,000 keys/sec, the fastest scanner measured. See [range scans](/scenarios/range-scans/).
-- **Read-mostly simplicity.** 865,000 random reads/sec from a single file with zero configuration.
+- **Ordered scans.** 707,000 keys/sec, the fastest scanner measured. See [range scans](/scenarios/range-scans/).
+- **Read-mostly simplicity.** 698,000 random reads/sec from a single file with zero configuration.
 - **Consistent snapshots.** The copy-on-write design means a read transaction sees a stable view while writes continue.
 
 ## Watch out for
 
-- **Slow random writes.** 38,000 writes/sec, near the bottom, because a copy-on-write B+tree copies a path of pages on each commit.
-- **Slowest durable writes.** 110 per second with a flush on every commit, the floor in this set.
-- **Space.** 2.3x the data, the page-level overhead of a B+tree.
+- **Slow random writes.** 52 writes/sec, the floor of the [ingest](/scenarios/write-ingest/) table, because it fsyncs on every commit even at its default and a copy-on-write B+tree copies a path of pages before each flush.
+- **Slowest durable writes.** 52 per second in the FULL regime, the floor in this set, the same rate as its default because it was already flushing per commit.
+- **Space.** 2.28x the data, the page-level overhead of a B+tree.
 
 ## Reach for it when
 

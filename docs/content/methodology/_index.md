@@ -1,7 +1,7 @@
 ---
 title: "Methodology"
 linkTitle: "Methodology"
-description: "How kvbench measures: one harness for every engine, four machines, two durability modes never mixed, and the rules that keep the comparison honest."
+description: "How kvbench measures: one harness for every engine, two durability regimes never mixed, and the rules that keep the comparison honest."
 weight: 40
 ---
 
@@ -23,31 +23,28 @@ The workloads are the recognised standards:
 - **readrandom**, **readseq:** read random keys, then scan keys in order.
 - **YCSB A through F:** the standard service mixes, from 50/50 read-update (A) through read-only (C) to read-modify-write (F), Zipfian-skewed so a few hot keys take most of the traffic.
 
-## The machines
+## The machine
 
-Every workload runs on four machines, so a number is never a single-laptop fluke:
+The published numbers are from one machine, an Apple M4 laptop (10 cores, 24 GB):
 
 | Label | CPU | Cores | RAM |
 | --- | --- | --- | --- |
 | Apple M4 | Apple M4 | 10 | 24 GB |
-| EPYC 4-core | AMD EPYC | 4 | 6 GB |
-| EPYC 6-core | AMD EPYC | 6 | 12 GB |
-| EPYC 8-core | AMD EPYC | 8 | 24 GB |
 
-Unless a table says otherwise, the headline number is the Apple M4.
-The engines are pure Go with no cgo, so one static binary runs the identical matrix on every host.
+The engines are pure Go with no cgo, so one static binary runs the identical matrix on any host.
+A cross-machine re-run under the current methodology is pending; until it lands we publish only the M4 figures rather than a stale multi-host table.
 
-## Two durability modes, never mixed
+## Two durability regimes, never mixed
 
 Durability is where benchmarks lie, so kvbench is strict about it.
-The same write workload runs in two modes, and the two never share a table:
+The same write workload runs in two regimes, and the two never share a table:
 
-- **Flush off:** no engine waits on the disk; the OS owns the flush. This measures the structural speed of the engine. Same rules for all.
-- **Flush on:** every engine forces a disk flush on every commit. This measures the real cost of durability. Same rules for all.
+- **DEFAULT:** every engine runs at its own shipped durability. bbolt and sqlite fsync on every commit; badger, pebble, goleveldb and tamnd/kv acknowledge the write and flush on a short timer, a bounded sub-second loss window, the same contract Redis gives with appendfsync everysec. This is the honest out-of-the-box comparison, and it is where the read and ingest headlines live.
+- **FULL:** every engine is forced to flush the disk on every commit. This is the real cost of zero-loss durability, measured on one footing.
 
-We never compare engines at their shipped defaults, because those defaults disagree: some flush every commit, some flush on a timer, some not until asked.
-Comparing one engine's durable write against another's buffered write is the classic benchmark lie, and refusing to do it is the point of this project.
-The [durable-writes scenario](/scenarios/durable-writes/) is built entirely on the flush-on numbers.
+The trap kvbench refuses is comparing one engine's per-commit number against another's timer-flush number in the same table.
+Both regimes are honest, they answer different questions, and a result always carries the regime it ran under.
+The [durable-writes scenario](/scenarios/durable-writes/) is built entirely on the FULL numbers.
 
 ## What the metrics mean
 
@@ -70,7 +67,7 @@ They are useful for checking the harness against itself, and they are not shippa
 ```
 go install github.com/tamnd/kvbench/cmd/kvbench@latest
 kvbench run --engines kv,badger,pebble,bbolt,buntdb,pogreb,goleveldb,sqlite \
-  --durability OFF --workloads readrandom,fillrandom --reps 2
+  --durability DEFAULT --workloads readrandom,fillrandom --reps 2
 kvbench report --in results/run-1 --md
 ```
 

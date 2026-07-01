@@ -11,22 +11,23 @@ Each page below is a short card: the shape, the best workload with real numbers,
 
 ## At a glance
 
-Throughput is operations per second on the Apple M4, 100,000 keys of 1 KB, 8 concurrent clients, disk flush off.
-Space is on-disk bytes per byte of data after fresh writes.
+Random reads are cache-resident (100,000 keys of 1 KB); fresh writes and space are out-of-cache (300,000 keys written to disk); durable writes are the FULL regime with a flush on every commit.
+All on the Apple M4, 8 concurrent clients.
+Each column names its own setup because a read that fits in cache and a write that spills to disk are different questions.
 
 | Engine | Shape | Random reads | Fresh writes | Ordered scan | Space | Durable writes |
 | --- | --- | --- | --- | --- | --- | --- |
-| [tamnd/kv](/engines/tamnd-kv/) | hash-log | 6,848,000 | 83,000 | no | 5.0x | 740 |
-| [badger](/engines/badger/) | LSM | 594,000 | 239,000 | yes | 22x | 16,000 |
-| [pebble](/engines/pebble/) | LSM | 856,000 | 97,000 | yes | 0.26x | 980 |
-| [bbolt](/engines/bbolt/) | B+tree | 865,000 | 38,000 | yes | 2.3x | 110 |
-| [buntdb](/engines/buntdb/) | in-memory B-tree | 3,572,000 | 230,000 | yes | 1.0x | 250 |
-| [pogreb](/engines/pogreb/) | hash-log | 4,008,000 | 190,000 | no | 2.0x | 360 |
-| [goleveldb](/engines/goleveldb/) | LSM | 1,032,000 | 92,000 | yes | 0.15x | 1,100 |
-| [sqlite](/engines/sqlite/) | B-tree | 45,000 | 29,000 | yes | 4.5x | 17,000 |
+| [tamnd/kv](/engines/tamnd-kv/) | hash-log | 6,955,000 | 5,711,000 | no | 0.43x | 224 |
+| [badger](/engines/badger/) | LSM | 561,000 | 320,000 | yes | 7.41x | 4,676 |
+| [pebble](/engines/pebble/) | LSM | 713,000 | 158,000 | yes | 0.13x | 383 |
+| [bbolt](/engines/bbolt/) | B+tree | 698,000 | 52 | yes | 2.28x | 52 |
+| [buntdb](/engines/buntdb/) | in-memory B-tree | 3,236,000 | 16,000 | yes | 1.03x | 99 |
+| [pogreb](/engines/pogreb/) | hash-log | 1,748,000 | 17,000 | no | 1.05x | 158 |
+| [goleveldb](/engines/goleveldb/) | LSM | 815,000 | 28,000 | yes | 0.11x | 463 |
+| [sqlite](/engines/sqlite/) | B-tree | 52,000 | 7,500 | yes | 4.50x | 2,152 |
 
 No engine wins every column.
-The hash-logs own reads and lose on scans and update churn; the LSMs own writes and disk footprint; the B-trees own ordered scans and durable batching.
+tamnd/kv owns reads and background-flush writes and stays compact on disk; the LSMs own disk footprint and durable batching; the B-trees own ordered scans; badger and sqlite own per-commit durable throughput through group commit.
 Pick by the column your workload lives in, then read that engine's page.
 
 ## What "shape" means

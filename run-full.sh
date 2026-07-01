@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-full.sh drives the whole kvbench matrix across every engine and every
-# execution mode (in-proc, cgo, subprocess, network), three durability levels,
+# execution mode (in-proc, cgo, subprocess, network), both durability regimes,
 # and both cache regimes.
 #
 # The op budget is tiered. Read workloads run a large number of ops for stable
@@ -27,16 +27,16 @@ WOPS=5000
 
 run() { echo ">>> $*"; $BIN run "$@" --out "$OUT" 2>&1 | grep -vE "pool.go|connection pool"; }
 
-echo "================ PLANE A: headline (cache-resident, NORMAL) ================"
-run --engines "$ALL" --workloads "$READ_W"  --regimes cache-resident --durability NORMAL --cardinality 100000 --ops $ROPS --reps 2 --conc 8
-run --engines "$ALL" --workloads "$WRITE_W" --regimes cache-resident --durability NORMAL --cardinality 100000 --ops $WOPS --reps 2 --conc 8
+echo "================ PLANE A: headline (cache-resident, DEFAULT) ================"
+run --engines "$ALL" --workloads "$READ_W"  --regimes cache-resident --durability DEFAULT --cardinality 100000 --ops $ROPS --reps 2 --conc 8
+run --engines "$ALL" --workloads "$WRITE_W" --regimes cache-resident --durability DEFAULT --cardinality 100000 --ops $WOPS --reps 2 --conc 8
 
-echo "================ PLANE B: durability (cache-resident, fillrandom, OFF/NORMAL/FULL) ================"
-run --engines "$ALL" --workloads fillrandom --regimes cache-resident --durability OFF,NORMAL,FULL --cardinality 100000 --ops $WOPS --reps 2 --conc 8
+echo "================ PLANE B: durability (cache-resident, fillrandom, DEFAULT/FULL) ================"
+run --engines "$ALL" --workloads fillrandom --regimes cache-resident --durability DEFAULT,FULL --cardinality 100000 --ops $WOPS --reps 2 --conc 8
 
-echo "================ PLANE C: out-of-cache (NORMAL) ================"
-run --engines "$ALL" --workloads "$READ_W" --regimes out-of-cache --durability NORMAL --cardinality 300000 --ops $ROPS --reps 2 --conc 8
-run --engines "$ALL" --workloads fillrandom --regimes out-of-cache --durability NORMAL --cardinality 300000 --ops $WOPS --reps 2 --conc 8
+echo "================ PLANE C: out-of-cache (DEFAULT) ================"
+run --engines "$ALL" --workloads "$READ_W" --regimes out-of-cache --durability DEFAULT --cardinality 300000 --ops $ROPS --reps 2 --conc 8
+run --engines "$ALL" --workloads fillrandom --regimes out-of-cache --durability DEFAULT --cardinality 300000 --ops $WOPS --reps 2 --conc 8
 
 echo "================ DONE ================"
 echo "cells: $(ls "$OUT" | wc -l)"
