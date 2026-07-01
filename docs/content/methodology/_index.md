@@ -57,7 +57,9 @@ The [durable-writes scenario](/scenarios/durable-writes/) is built entirely on t
 An in-process `get` and a `get` over a network socket are not the same measurement, so kvbench keeps them in separate comparison classes that never share a table.
 
 Most of this site is the embedded class: the eight pure-Go engines you add with `go get` and run in your own process, because that is the choice most Go developers are actually making.
-The Redis-compatible servers (Redis, Valkey, aki, and kv's own wire face) are their own class, measured over a socket at everysec durability on the [Redis-compatible page](/scenarios/redis-compatible/), where the network round-trip is in every number.
+The Redis-compatible servers (Redis, Valkey, and kv's own wire face) are their own class, measured over a socket at everysec durability on the [Redis-compatible page](/scenarios/redis-compatible/), where the network round-trip is in every number.
+That class has one extra rule the embedded class does not need: the load generator runs in its own process next to the server, so on Linux the harness pins the client and the server to disjoint cores (`kvbench run --cpu-split`).
+Without it a co-located client steals the cores the server needs, unevenly across single-threaded and multi-threaded servers, and the ranking comes out wrong; the Redis-compatible page shows the size of that effect.
 kvbench can also drive engines reached through cgo (RocksDB, LMDB, libmdbx) and Rust stores over a subprocess; those are built behind their own tags and are not on the published board yet.
 
 It also leaves out the internal reference rails the harness carries for its own validation (an in-memory ceiling and a do-nothing floor).

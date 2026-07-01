@@ -1,7 +1,7 @@
 ---
 title: "Redis-compatible servers: kv's wire face against redis and valkey"
 linkTitle: "Redis-compatible"
-description: "The RESP servers measured over a socket, everysec durability: redis, valkey, aki, and kv's own Redis face. kv-redis is competitive on the M4 and leads on a Linux VPS."
+description: "The RESP servers measured over a socket at everysec durability: redis, valkey, and kv's own Redis face. On an isolated Linux run redis and valkey lead the reads, kv-redis leads write ingest, and the client is pinned off the server so it cannot skew the numbers."
 weight: 70
 ---
 
@@ -22,47 +22,70 @@ All of them run at `appendfsync everysec`, each server's shipped default: a writ
 That is the production durability for a networked store.
 The per-commit `appendfsync always` regime is not measured over the wire, because over a network hop nobody deploys it (redis itself documents it as prohibitively slow); the per-commit comparison lives on the embedded [durable-writes](/scenarios/durable-writes/) page instead.
 
+## The client cannot be allowed to steal the server's cores
+
+There is a trap in benchmarking a networked store from the same machine, and it is worth being explicit about because it changed the numbers on this page.
+The harness runs the go-redis client in its own process, right next to the server.
+On a machine where they share cores, the client goroutines and the server threads fight for CPU, and the fight does not hit every server the same way.
+redis is single-threaded, so it only ever wants one core and a co-located client barely disturbs it.
+A multi-threaded server can claim the spare cores the client also wants.
+The result is a ranking that partly reflects who grabbed the idle cores rather than who serves the protocol faster.
+
+kvbench now closes that gap on Linux with `--cpu-split`: it pins the go-redis client to one set of cores and each launched server to a disjoint set, so the load generator can never take a core the server needs.
+Every server then gets the same core budget, the way `redis-benchmark` keeps its load threads off the server's cores.
+The measured cost of the trap is large.
+Here is the same four-core budget on the Linux box below, first with the client and server sharing the cores, then split apart, everysec, four concurrent clients:
+
+| Engine | readrandom (shared) | readrandom (split) | ycsb-c (shared) | ycsb-c (split) |
+| --- | --- | --- | --- | --- |
+| redis | 14,816 | 25,781 | 17,379 | 28,351 |
+| valkey | 22,486 | 30,183 | 23,834 | 25,353 |
+| kv-redis | 13,670 | 22,927 | 13,413 | 16,237 |
+
+Every server reads faster once the client is off its cores, redis most of all (up 74% on readrandom, 63% on read-only), because a single-threaded server has the least room to route around a client sitting on its core.
+Sharing cores had flattered the multi-threaded kv-redis into the read lead; splitting them apart hands the read lead back to redis and valkey.
+So the table below is the split run, and it is the one to trust.
+
+## A 6-core x86-64 Linux VPS, client pinned off the server
+
+kvbench run with `--cpu-split`, the server on two cores and the go-redis client on two others, four concurrent clients, 1 KB values, everysec durability, over a unix socket.
+redis 8.8.0, valkey 7.2.12, kv 0.4.0:
+
+| Engine | fillrandom | overwrite | readrandom | ycsb-a (50/50) | ycsb-c (read-only) |
+| --- | --- | --- | --- | --- | --- |
+| kv-redis | **23,304** | **16,809** | 22,927 | 18,582 | 16,237 |
+| valkey | 16,104 | 15,069 | **30,183** | **24,246** | 25,353 |
+| redis | 15,491 | 15,563 | 25,781 | 20,231 | **28,351** |
+
+Read the columns, not the rows.
+kv-redis leads write ingest by a clear margin, half again the write rate of redis or valkey on fillrandom, and it is level with them on overwrite.
+redis and valkey lead the reads and the read-heavy mix: valkey takes readrandom and the 50/50 ycsb-a, redis takes read-only ycsb-c.
+The picture is the same shape as the embedded board, where kv is strongest on writes and competitive on reads, only here the network hop caps everyone at tens of thousands of ops a second instead of millions.
+
 ## Apple M4 laptop
 
-100,000 keys in cache, 1 KB values, 8 concurrent clients, everysec durability, over a unix socket.
-redis 8.8.0, valkey 9.1.0, aki at main, kv 0.4.0:
+The same servers on an Apple M4 laptop (10 cores), 8 concurrent clients, 1 KB values, everysec durability, over a unix socket.
+redis 8.8.0, valkey 9.1.0, kv 0.4.0:
 
 | Engine | fillrandom | overwrite | readrandom | ycsb-a (50/50) | ycsb-c (read-only) |
 | --- | --- | --- | --- | --- | --- |
-| valkey | **112,674** | 96,506 | **146,865** | 93,212 | **192,396** |
-| redis | 98,447 | **107,100** | 145,198 | **106,215** | 143,497 |
+| valkey | 112,674 | 96,506 | 146,865 | 93,212 | 192,396 |
+| redis | 98,447 | 107,100 | 145,198 | 106,215 | 143,497 |
 | kv-redis | 99,989 | 90,626 | 96,728 | 106,123 | 102,435 |
-| aki | 95,304 | 80,370 | 82,999 | 80,013 | 54,545 |
 
-On the M4, over a warm socket, redis and valkey lead the pure-read columns.
-Their event loops are a decade tuned and the socket round-trip is cheap on this hardware, so the mature servers show best where the work is smallest.
-kv-redis is in the pack on writes and level with redis on the read-update mix (106,123 vs 106,215 on ycsb-a), and trails the two leaders on read-only.
-aki brings up the rear here, with a tail spike on ycsb-c (p99 3.2 ms) that the others do not have.
-
-## A 6-core x86-64 Linux VPS
-
-The same matrix on a Linux server, pinned to 4 cores, 4 concurrent clients, everysec durability, over a unix socket.
-redis 8.8.0, valkey 7.2.12, aki at main, kv 0.4.0:
-
-| Engine | fillrandom | overwrite | readrandom | ycsb-a (50/50) | ycsb-c (read-only) |
-| --- | --- | --- | --- | --- | --- |
-| kv-redis | **18,841** | **20,890** | **19,876** | **20,028** | **22,324** |
-| valkey | 14,341 | 11,671 | 16,137 | 15,678 | 18,390 |
-| redis | 11,727 | 12,110 | 16,526 | 11,387 | 14,701 |
-| aki | 10,824 | 8,434 | 11,100 | 7,508 | 10,160 |
-
-The ranking flips.
-On the Linux box kv-redis leads every column, from 20% ahead of valkey on read-only up to nearly 2x redis on the write and mixed workloads, and it holds the tightest tail as well (p99 2.0-3.6 ms, against 3.5-6.9 ms for redis and valkey).
-The absolute rates are far below the M4 table because this is a contended shared host with a quarter of the cores, so read the two tables as two separate rankings, not one cross-machine race.
-What carries across both is the shape of kv-redis: even on the wire it stays flat across read, write and mix, the same trait that makes the embedded core lead its board, and on a real Linux server that flatness puts it in front.
+Take this table as indicative, not as a ranking.
+`--cpu-split` needs Linux and `taskset`, so on macOS the client cannot be pinned off the server, and every number here is a shared-cores run of the kind the Linux comparison just showed is skewed.
+With ten cores and eight clients there is more headroom than on the pinned four-core VPS, so the skew is milder, but it still leans the same way, and the isolated Linux table above is the one to trust for how these servers rank.
+What both tables agree on is that kv's Redis face is in the same league as redis and valkey, competitive on the read-update mix and strongest on writes.
 
 ## What to take from this
 
-- kv's Redis face is a real option, not a demo. It is level with redis and valkey on the M4 and ahead of both on a Linux VPS, at the same everysec durability, through the same client and socket.
-- If you are choosing a networked RESP store and running it on a Linux server, kv-redis is worth measuring on your own hardware; the flat write-and-mix profile is the reason to.
-- redis and valkey remain excellent, especially for pure reads on fast hardware, and they carry a far larger command surface than kv's point subset (`GET`, `SET`, `DEL`, `EXISTS`, `PING`, plus the connect handshake). kv-redis is a point key/value store on the wire, not a full Redis.
+- kv's Redis face is a real option, not a demo. It leads write ingest on the isolated Linux run and is competitive on reads, at the same everysec durability, through the same client and socket.
+- If you are choosing a networked RESP store, measure it on your own hardware with the client pinned off the server (`kvbench run --cpu-split ...` on Linux), because a co-located client that shares the server's cores will quietly rank the servers wrong.
+- redis and valkey remain excellent, especially for reads, and they carry a far larger command surface than kv's point subset (`GET`, `SET`, `DEL`, `EXISTS`, `PING`, plus the connect handshake). kv-redis is a point key/value store on the wire, not a full Redis.
 
 ## What is not here yet
 
-- dragonfly, garnet and kvrocks have adapters in the harness but were not installed on these two hosts, so they are absent rather than estimated. Drop their server binary on `PATH` and they join the table.
-- Only one Linux host is shown. Two other servers were meant to run this, but both were busy with real work at measurement time (an LLM and a Kubernetes node on one, a crawl job saturating the other), and a latency benchmark on a loaded box measures the noise, not the engine. A quiet re-run on those hosts is pending, the same way the embedded board is waiting on its cross-machine pass.
+- aki has an adapter in the harness, but the build on the Linux host would not come up during this run, so it is left out rather than shown with a zero. It was in an earlier co-located table; once its server launches cleanly under the split it rejoins.
+- dragonfly, garnet and kvrocks have adapters in the harness but were not installed on these hosts, so they are absent rather than estimated. Drop their server binary on `PATH` and they join the table.
+- Only one Linux host is shown, and it was lightly loaded rather than idle at measurement time. The two quieter servers that were meant to run this were busy with real work (an LLM and a Kubernetes node on one, a crawl job saturating the other), and a latency benchmark on a loaded box measures the noise, not the engine. A quiet re-run on those hosts is pending, the same way the embedded board is waiting on its cross-machine pass.

@@ -103,14 +103,19 @@ type Meta struct {
 
 // Config is passed to Open. Embedded engines use Dir; network engines use Addr.
 type Config struct {
-	Dir         string            // clean data directory for embedded modes
-	Addr        string            // server address for network mode
-	Profile     string            // "default" | "tuned"
-	Synchronous string            // "DEFAULT" (engine as it ships) | "FULL" (per-commit fsync)
-	CacheBytes  int64             // target cache size for the tuned profile
-	ValueBytes  int               // hint for value sizing
-	Cardinality uint64            // distinct keys the cell will load; a sizing hint for engines with a resident, fixed-size key index
-	Extra       map[string]string // engine-specific tuning (from the profile file)
+	Dir         string // clean data directory for embedded modes
+	Addr        string // server address for network mode
+	Profile     string // "default" | "tuned"
+	Synchronous string // "DEFAULT" (engine as it ships) | "FULL" (per-commit fsync)
+	CacheBytes  int64  // target cache size for the tuned profile
+	ValueBytes  int    // hint for value sizing
+	Cardinality uint64 // distinct keys the cell will load; a sizing hint for engines with a resident, fixed-size key index
+	// ServerCPUList pins a launched network server to a taskset -c core list
+	// (Linux only), for example "0-2". It is set by the --cpu-split run flag so the
+	// server and the co-located client never share a core. Empty leaves the server
+	// on the inherited affinity mask, which is the default for embedded engines.
+	ServerCPUList string
+	Extra         map[string]string // engine-specific tuning (from the profile file)
 }
 
 // Stats is whatever the engine exposes for RUM extraction. Missing fields are

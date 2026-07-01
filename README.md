@@ -70,6 +70,9 @@ Each adapter launches its own RESP server on a per-process unix socket and drive
 kv's server (`go build -o kv ./cmd/kv` in tamnd/kv) speaks the redis-server flag dialect, so the adapter drives it close to the way it drives redis: `--port`, `--unixsocket`, `--dir`, `--appendonly` and `--appendfsync` carry their redis meaning, plus two kv sizing hints (`--value-bytes`, `--cardinality`).
 Like every RESP server on the board it is measured at `appendfsync everysec`, the production default for a networked store; the per-commit durable comparison lives on the embedded class.
 
+The go-redis client runs in the harness process next to the server, so on a co-located Linux run pass `--cpu-split` to pin the client and the server to disjoint cores.
+Without it the client steals the cores the server needs, unevenly between single-threaded and multi-threaded servers, and the ranking comes out wrong; `--cpu-server` and `--cpu-client` set the core lists by hand, or leave them empty for a balanced split from the core count.
+
 ```
 go build -tags network_engines -o kvbench ./cmd/kvbench
 ```

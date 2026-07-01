@@ -34,6 +34,9 @@ type CellConfig struct {
 	RunID       string
 	DataRoot    string
 	CacheBytes  int64
+	// ServerCPUList pins a launched network server to these cores (taskset -c
+	// list, Linux only). Set by --cpu-split; empty for embedded engines.
+	ServerCPUList string
 }
 
 // RunCell loads the engine, runs the measured workload, and returns a Result.

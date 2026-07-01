@@ -25,6 +25,7 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+	"github.com/tamnd/kvbench/cpuset"
 	"github.com/tamnd/kvbench/engine"
 )
 
@@ -114,7 +115,12 @@ func (e *eng) Open(ctx context.Context, cfg engine.Config) error {
 		return errors.New(e.spec.Binary + " not found on PATH")
 	}
 	e.sock = filepath.Join("/tmp", "kvbr-"+e.spec.Name+"-"+strconv.Itoa(os.Getpid())+"-"+strconv.FormatUint(sockSeq.Add(1), 10)+".sock")
-	cmd := exec.Command(bin, e.spec.ArgsFn(cfg, e.sock)...)
+	// When --cpu-split is on the harness pins itself (and so the go-redis client)
+	// to one core set and hands the server a disjoint one, so the two never fight
+	// for a core. ServerWrap folds the launch under taskset for that server set; it
+	// is a no-op when the list is empty or taskset is absent.
+	launchBin, launchArgs := cpuset.ServerWrap(cfg.ServerCPUList, bin, e.spec.ArgsFn(cfg, e.sock))
+	cmd := exec.Command(launchBin, launchArgs...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Start(); err != nil {
