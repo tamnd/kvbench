@@ -19,16 +19,16 @@ Writing 300,000 fresh random keys, 1 KB values, 8 concurrent clients, Apple M4:
 
 | Engine | Shape | Writes/sec | Space | p99 |
 | --- | --- | --- | --- | --- |
-| **tamnd/kv** | hash-log | **5,711,632** | 0.43x | 4 us |
-| badger | LSM | 320,320 | 7.41x | 202 us |
-| pebble | LSM | 157,752 | 0.13x | 403 us |
-| goleveldb | LSM | 28,809 | 0.11x | 13.6 ms |
-| pogreb | hash-log | 17,068 | 1.05x | 26.6 ms |
-| buntdb | in-memory B-tree | 16,661 | 1.03x | 13.2 ms |
-| sqlite | B-tree | 7,522 | 4.50x | 15.9 ms |
-| bbolt | B+tree | 52 | 2.28x | 472 ms |
+| **tamnd/kv** | hash-log | **1,791,380** | 0.43x | 6 us |
+| pebble | LSM | 178,724 | 0.13x | 500 us |
+| badger | LSM | 45,790 | 7.41x | 6.3 ms |
+| goleveldb | LSM | 43,040 | 0.11x | 7.0 ms |
+| pogreb | hash-log | 33,601 | 1.05x | 6.3 ms |
+| buntdb | in-memory B-tree | 1,992 | 1.03x | 115 ms |
+| sqlite | B-tree | 695 | 4.50x | 204 ms |
+| bbolt | B+tree | 96 | 2.28x | 472 ms |
 
-tamnd/kv leads ingest by roughly eighteen times the next engine, and the reason is the hot tier.
+tamnd/kv leads ingest by roughly ten times the next engine, pebble, and the reason is the hot tier.
 A write lands in an in-memory append segment and returns; the cold tail is written and compressed in the background, off the acknowledge path.
 That is why the write rate does not fall when the data outgrows the cache the way reads do: a write never waits on a seek, it only ever appends to memory.
 It also stays compact on disk, 0.43x, because the cold tail is compressed, so it is not trading disk for speed the way badger's 7.41x does here.

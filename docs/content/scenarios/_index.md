@@ -21,7 +21,7 @@ The last page is a different class, the Redis-compatible servers reached over a 
 | [Durable writes](/scenarios/durable-writes/) | Every write must survive a crash | badger, sqlite |
 | [Range scans](/scenarios/range-scans/) | Walking keys in sorted order | bbolt, pebble, goleveldb |
 | [Smallest footprint](/scenarios/footprint/) | Least disk per byte stored | goleveldb, pebble |
-| [Redis-compatible](/scenarios/redis-compatible/) | A networked RESP store, not an in-process library | valkey, redis, kv-redis |
+| [Redis-compatible](/scenarios/redis-compatible/) | A networked RESP store, not an in-process library | kv-redis, valkey, redis |
 
 If you are not sure which one you are, you are probably [mixed read-update](/scenarios/mixed/): most real services read and write in roughly equal measure.
 Start there.
