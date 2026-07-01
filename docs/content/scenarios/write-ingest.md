@@ -1,7 +1,7 @@
 ---
 title: "Write ingest: a firehose of new keys"
 linkTitle: "Write ingest"
-description: "Event logs, metrics, and bulk loads that write new keys fast. LSM engines like pebble and badger absorb writes without rewriting a tree."
+description: "Event logs, metrics, and bulk loads that write new keys fast. tamnd/kv leads by absorbing every write into an in-memory hot tier and spilling to disk in the background."
 weight: 20
 ---
 
@@ -9,41 +9,40 @@ This is the ingest workload: you are writing a stream of new keys as fast as the
 Event logs, metrics pipelines, crawl output, bulk imports.
 Reads happen later or elsewhere; right now the only thing that matters is keeping up with the write rate.
 
-Writing new keys favours engines that do not rewrite a tree on every insert.
-That is the LSM trade: a write is an in-memory buffer insert plus a small log append, and the sorting happens later in the background.
-
-These numbers are with the disk flush off, so they measure the engine's structural write speed, not the disk.
-If every write must survive a crash, that is a different question with different winners, on the [durable-writes page](/scenarios/durable-writes/).
+An ingest firehose usually writes more data than fits in cache, so these numbers are the out-of-cache case: 300,000 fresh keys against a cache sized well below them, so every engine has to actually put the data on disk, not just in memory.
+Each engine runs at its shipped default durability, the honest out-of-the-box comparison.
+If every write must instead survive a crash with zero loss, that is a different question with different winners, on the [durable-writes page](/scenarios/durable-writes/).
 
 ## The numbers
 
-Writing 100,000 fresh random keys, 1 KB values, 8 concurrent clients:
+Writing 300,000 fresh random keys, 1 KB values, 8 concurrent clients, Apple M4:
 
-| Engine | Shape | M4 | EPYC 4-core | EPYC 6-core | EPYC 8-core |
-| --- | --- | --- | --- | --- | --- |
-| badger | LSM | **239,000** | 61,000 | 22,000 | 32,000 |
-| buntdb | in-memory B-tree | 230,000 | 85,000 | 44,000 | 63,000 |
-| pogreb | hash-log | 190,000 | 84,000 | 50,000 | 54,000 |
-| pebble | LSM | 97,000 | **120,000** | **92,000** | **72,000** |
-| goleveldb | LSM | 92,000 | 54,000 | 30,000 | 37,000 |
-| tamnd/kv | hash-log | 83,000 | 25,000 | 12,000 | 17,000 |
-| bbolt | B+tree | 38,000 | 20,000 | 11,000 | 10,000 |
-| sqlite | B-tree | 29,000 | 8,000 | 3,000 | 5,000 |
+| Engine | Shape | Writes/sec | Space | p99 |
+| --- | --- | --- | --- | --- |
+| **tamnd/kv** | hash-log | **5,711,632** | 0.43x | 4 us |
+| badger | LSM | 320,320 | 7.41x | 202 us |
+| pebble | LSM | 157,752 | 0.13x | 403 us |
+| goleveldb | LSM | 28,809 | 0.11x | 13.6 ms |
+| pogreb | hash-log | 17,068 | 1.05x | 26.6 ms |
+| buntdb | in-memory B-tree | 16,661 | 1.03x | 13.2 ms |
+| sqlite | B-tree | 7,522 | 4.50x | 15.9 ms |
+| bbolt | B+tree | 52 | 2.28x | 472 ms |
 
-There is a twist here worth noticing.
-badger is fastest on the M4 laptop, but **pebble is fastest on every Linux server** and barely slows as the data grows, because its compaction scales across cores where badger's value-log GC does not.
-If your ingest runs on a server, pebble is the safer bet; on a laptop or a few cores, badger edges it.
+tamnd/kv leads ingest by roughly eighteen times the next engine, and the reason is the hot tier.
+A write lands in an in-memory append segment and returns; the cold tail is written and compressed in the background, off the acknowledge path.
+That is why the write rate does not fall when the data outgrows the cache the way reads do: a write never waits on a seek, it only ever appends to memory.
+It also stays compact on disk, 0.43x, because the cold tail is compressed, so it is not trading disk for speed the way badger's 7.41x does here.
 
-bbolt and sqlite sit at the bottom because a B-tree insert can rewrite a page, the exact cost the LSM shape avoids.
+bbolt sits at the floor because it fsyncs on every commit even at its default, and a crash-safe B-tree copies a path of pages before each flush.
+That is durability cost, not structural slowness, and the [durable-writes page](/scenarios/durable-writes/) is where that trade is measured for everyone on one footing.
 
 ## What to pick
 
-- **pebble** for sustained ingest on a server. It is the most consistent writer across machines and compresses the result smallest on disk (see [footprint](/scenarios/footprint/)).
-- **badger** for ingest on a laptop or a few cores, where its in-memory write path is fastest, as long as you can afford its disk footprint (it uses 22x the raw data until its background GC catches up).
-- **buntdb** if the dataset fits in RAM and you want fast writes and fast reads from one engine.
+- **tamnd/kv** for high-rate ingest where a sub-second worst-case loss window is acceptable, which is most logs, metrics, and derived data. Nothing here ingests faster and it stays compact on disk.
+- **pebble** when you also need ordered scans and the smallest on-disk footprint, and can accept a lower raw ingest rate.
+- **badger** for a fast LSM ingest path, as long as you can afford its disk footprint until its background GC catches up.
 
 ## What to avoid
 
-- **bbolt** and **sqlite** for write-heavy ingest. The B-tree page rewrite caps them well below the LSM engines.
-- **badger** if disk space is tight. Its write speed comes with the highest space amplification measured here.
-- **tamnd/kv** if ingest is the main job. It is mid-pack on fresh writes and its strength is on the [read side](/scenarios/read-heavy/), not ingest.
+- **bbolt** and **sqlite** for write-heavy ingest at their defaults. The per-commit fsync and B-tree page rewrite cap them far below the rest.
+- Reading any of these rates as zero-loss durable. They are each engine's shipped default; the per-commit-fsync rates are on the [durable-writes page](/scenarios/durable-writes/) and are far lower.

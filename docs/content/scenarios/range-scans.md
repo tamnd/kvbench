@@ -33,12 +33,12 @@ Sequential scan throughput, walking keys in order, 100,000 keys, 1 KB values, on
 
 | Engine | Shape | Keys scanned/sec | p99 |
 | --- | --- | --- | --- |
-| **bbolt** | B+tree | **766,000** | 234 us |
-| pebble | LSM | 450,000 | 410 us |
-| goleveldb | LSM | 167,000 | 444 us |
-| buntdb | in-memory B-tree | 114,000 | 1.7 ms |
-| badger | LSM | 29,000 | 1.9 ms |
-| sqlite | B-tree | 12,000 | 6.8 ms |
+| **bbolt** | B+tree | **707,000** | 234 us |
+| pebble | LSM | 367,000 | 436 us |
+| goleveldb | LSM | 156,000 | 459 us |
+| buntdb | in-memory B-tree | 98,000 | 1.7 ms |
+| badger | LSM | 22,000 | 3.6 ms |
+| sqlite | B-tree | 13,000 | 6.7 ms |
 
 bbolt wins scans cleanly, and this is its best workload.
 A B+tree stores neighbouring keys in neighbouring pages, so a scan is close to a sequential disk read.

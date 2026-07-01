@@ -43,9 +43,11 @@ On this site **pebble**, **badger**, and **goleveldb** are LSMs.
 
 A hash-log (the Bitcask design) appends every write to the end of one file and keeps an in-memory index from key to file position.
 A read is one index lookup and one disk seek, so point reads are the fastest of any shape.
-The costs are real: the index lives in RAM so it scales with the number of keys, there is no ordered scan because the file is in write order, and updating the same key repeatedly leaves old copies behind that have to be compacted away later.
+Two costs are inherent: the index lives in RAM so it scales with the number of keys, and there is no ordered scan because the file is in write order.
+A third cost, update churn, is only inherent to the plain design: updating the same key repeatedly leaves old copies behind that have to be compacted away later.
+An engine that puts an in-memory hot tier in front of the log, as tamnd/kv does, absorbs a repeated update in memory and keeps one pointer per key, so it sidesteps the churn that the plain design pays.
 
-On this site **tamnd/kv** and **pogreb** are hash-logs.
+On this site **tamnd/kv** and **pogreb** are hash-logs; pogreb is the plain design, tamnd/kv adds the hot tier.
 
 ## The one-line summary
 
@@ -53,7 +55,7 @@ On this site **tamnd/kv** and **pogreb** are hash-logs.
 | --- | --- | --- | --- |
 | B-tree | Ordered scans, balanced reads | Random writes | bbolt, sqlite, buntdb |
 | LSM | Writes, small on disk | Read amplification, merge spikes | pebble, badger, goleveldb |
-| Hash-log | Point reads | No scans, update churn | tamnd/kv, pogreb |
+| Hash-log | Point reads | No scans (update churn on the plain design) | tamnd/kv, pogreb |
 
 Knowing the shape tells you most of what an engine will be good and bad at before you run anything.
 The [scenarios](/scenarios/) put real numbers on it.

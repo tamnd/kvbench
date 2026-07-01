@@ -9,11 +9,11 @@ That is the point: the comparison is fair because the measurement code is the sa
 There is no home-field engine.
 
 **The results, written for people picking a store, are at [kvbench.tamnd.com](https://kvbench.tamnd.com/).**
-That site is scenario-first: name what your workload does most (read-heavy, write-ingest, mixed, durable, scans, footprint) and it tells you which engine to reach for, with real numbers from four machines.
+That site is scenario-first: name what your workload does most (read-heavy, write-ingest, mixed, durable, scans, footprint) and it tells you which engine to reach for, with real numbers.
 This README is for running the benchmark yourself.
 
 tamnd/kv (Spec 2059) is one adapter among many here, with no special treatment.
-It runs through the same in-process path as every other embedded engine.
+It is measured as its hlog storage core, a sharded resident hash index over a hybrid log with an in-memory hot tier and a cold tail spilled to one file, and it runs through the same in-process path as every other embedded engine.
 
 ## Install
 
@@ -25,7 +25,7 @@ The default build is pure Go, no cgo, and pulls in the eight embedded engines th
 
 | Engine | Family | Notes |
 | --- | --- | --- |
-| tamnd/kv | hash-log | single-file store with WAL/MVCC transactions (Spec 2059) |
+| tamnd/kv | hash-log | single-file store, hot/cold hash-log core (Spec 2059) |
 | badger | LSM | separate value log |
 | pebble | LSM | the engine under CockroachDB |
 | goleveldb | LSM | pure-Go LevelDB port |
@@ -98,22 +98,21 @@ kvbench report --in results/mine --md
 ```
 
 Run `kvbench run` with no `--engines` to sweep every real built-in engine (the reference rails are skipped unless named).
-For the portable public profile that every host runs, the same matrix in a single shared durability mode so the numbers are comparable, use `make bench-public`; the runner is `scripts/bench-profile.sh` and the fairness model is at [kvbench.tamnd.com/methodology](https://kvbench.tamnd.com/methodology/).
+For the portable public profile that every host runs, one DEFAULT pass and one FULL pass so the two durability regimes stay separate, use `make bench-public`; the runner is `scripts/bench-profile.sh` and the fairness model is at [kvbench.tamnd.com/methodology](https://kvbench.tamnd.com/methodology/).
 
 `report` splits the board into four comparison classes and scores them separately, so an in-process get never shares a table with a networked one:
 Class 1 embedded local engines, Class 2 Redis-compatible in-memory servers, Class 3 Redis-compatible persistent servers, Class 4 distributed systems.
 Each engine carries its class in its metadata, so the split is in the data, not a flag at report time.
 
-## Durability: the one fairness rule that matters
+## Durability: two regimes, both durable
 
-The same durability label means different things to different engines: bbolt fsyncs every commit while another engine flushes on a timer.
-So the published numbers never use shipped defaults.
-Every write workload runs twice in a single mode shared by all engines:
+The same durability word means different things to different engines: bbolt fsyncs on every commit, while badger, pebble, and kv flush in the background.
+Comparing one engine's per-commit number against another's background number is the classic benchmark lie, so the axis is explicit and every result carries the regime it ran under.
 
-- `--durability OFF` takes the per-commit flush out of every engine, to compare write paths directly.
-- `--durability FULL` puts a flush on every commit for every engine, to measure the real cost of durability.
+- `--durability DEFAULT` runs each engine at its own shipped durability, the honest out-of-the-box comparison, every engine exactly as its authors ship it. This is not durability off: the background engines still flush, just on a short timer with a bounded sub-second loss window, the same contract as Redis appendfsync everysec.
+- `--durability FULL` forces a per-commit fsync on every engine, so the background engines pay the disk on every write too. This is the real cost of zero-loss durability, measured on one footing.
 
-The two never share a table.
+A DEFAULT number and a FULL number never share a table.
 That, and the per-engine asterisks that ride along in every result, are what keep a number honest.
 
 ## Workloads

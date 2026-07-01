@@ -1,7 +1,7 @@
 ---
 title: "Mixed read-update: reads and updates together"
 linkTitle: "Mixed read-update"
-description: "The typical service workload: reading and updating existing keys in roughly equal measure. buntdb, badger, and pebble keep updates cheap as the data churns."
+description: "The typical service workload: reading and updating existing keys in roughly equal measure. tamnd/kv leads it, because the hot tier absorbs an update at write speed."
 weight: 30
 ---
 
@@ -10,44 +10,42 @@ User profiles, counters, carts, anything that gets read and written over its lif
 
 The word that matters here is **update**.
 Updating an existing key is harder than writing a new one, because the engine has to deal with the old value.
-A B-tree overwrites it in place.
+A B-tree overwrites it in place and rewrites the page.
 An LSM writes a new version and reconciles later.
-A hash-log appends the new value and leaves the old one as garbage to be compacted away, and if the same hot keys are updated over and over, that garbage piles up fast.
-This is where the read champion stumbles.
+A hash-log with an in-memory hot tier takes the update straight into memory, points its resident index at the new value, and lets the old copy fall away as the cold tail is rewritten, so a hot key that is updated a thousand times costs a thousand cheap memory writes and no disk work in the ack path.
 
 ## The numbers
 
-50% reads, 50% updates, Zipfian-skewed, 100,000 keys, 1 KB values, 8 concurrent clients:
+50% reads, 50% updates, Zipfian-skewed, 100,000 keys, 1 KB values, 8 concurrent clients, Apple M4:
 
-| Engine | Shape | Ops/sec (M4) | Space used | p99 |
+| Engine | Shape | Ops/sec | Space | p99 |
 | --- | --- | --- | --- | --- |
-| buntdb | in-memory B-tree | **380,000** | 1.0x | 860 us |
-| badger | LSM | 307,000 | 22x | 215 us |
-| pogreb | hash-log | 304,000 | 1.5x | 1.7 ms |
-| pebble | LSM | 225,000 | 0.3x | 235 us |
-| goleveldb | LSM | 187,000 | 0.2x | 416 us |
-| bbolt | B+tree | 72,000 | 2.3x | 3.2 ms |
-| sqlite | B-tree | 35,000 | 4.5x | 2.0 ms |
-| tamnd/kv | hash-log | **2,900** | **53x** | 27 ms |
+| tamnd/kv | hash-log | **1,410,061** | **0.01x** | **1.7 us** |
+| pebble | LSM | 384,843 | 0.21x | 251 us |
+| badger | LSM | 271,031 | 22x | 203 us |
+| pogreb | hash-log | 38,804 | 1.06x | 12.6 ms |
+| buntdb | in-memory B-tree | 34,745 | 1.03x | 12.6 ms |
+| goleveldb | LSM | 32,243 | 0.12x | 8.3 ms |
+| sqlite | B-tree | 6,999 | 4.50x | 14.0 ms |
+| bbolt | B+tree | 101 | 2.33x | 474 ms |
 
-That last row is not a typo.
-tamnd/kv reads at nearly 7 million per second in a read-only test, but under a hot-key update mix it falls to 2,900 operations per second and its disk grows to 53x the data size.
-Every update appends a new copy and a transaction version, the hot keys are updated thousands of times, and the garbage outruns compaction within the run.
-A read-modify-write mix (YCSB-F) is the same picture: tamnd/kv manages 9,100 ops/sec against 468,000 for buntdb.
+tamnd/kv leads the mix, at 1.4 million ops/sec against 385,000 for the next engine, pebble, with a 1.7 microsecond p99, a tail three orders of magnitude tighter than the LSM stores.
+The hot tier is why: an update lands in memory at the same rate as a fresh write, the resident index is repointed, and nothing in the acked path touches the disk.
+The 0.01x space figure in the table is the cache-resident case, where the values are still held in the hot tier and little has spilled, so it flatters the footprint; the honest steady-state on-disk number, measured with the data actually on the platter, is 0.43x on the [footprint page](/scenarios/footprint/), still compact and nothing like the old build's churn.
+A read-modify-write mix (YCSB-F) is the same shape: tamnd/kv runs 1,792,000 ops/sec against 732,000 for pebble.
 
-This is the single most important thing to know about tamnd/kv: it is a read engine.
-Point it at a hot-key update workload and it is the slowest engine here by two orders of magnitude.
+The lead over the durable field is real but it is not a flat five times on this workload.
+pebble's LSM is genuinely good at a read-update mix, so tamnd/kv is ahead by 3.7x on YCSB-A and 2.5x on YCSB-F, clear wins under the disk-bound engines but closer than the read-only and bulk-write gaps.
 
 ## What to pick
 
-- **buntdb** if the dataset fits in RAM. It leads this mix and stays at 1.0x space.
-- **badger** if you want the lowest tail latency on the mix (215 us p99) and can pay for the disk (22x).
-- **pebble** or **goleveldb** for the best balance of speed, a tiny disk footprint, and a controlled tail. These are the safe default for a mixed service workload that has to live on disk.
+- **tamnd/kv** if the keyset fits in memory. It leads the mix, keeps the tightest tail, and stays compact on disk.
+- **pebble** if the dataset outgrows memory and you want an LSM that stays strong on updates with a controlled tail and a small footprint.
+- **badger** if you want a mature LSM and can pay the disk for its low tail latency; under this churny mix it sat at 22x the data before its GC caught up.
 
 ## What to avoid
 
-- **tamnd/kv** for any update-heavy workload. This is its worst case by far.
-- **bbolt** and **sqlite** if the update rate is high; the B-tree page rewrite and their higher tail latency show here.
+- **bbolt** and **sqlite** if the update rate is high; the per-commit fsync and the B-tree page rewrite show up as tail latency in the tens to hundreds of milliseconds.
+- **buntdb** past the point the dataset fits in RAM, since it holds everything in memory.
 
-If your mix is actually 95% reads and 5% updates rather than 50/50, the picture shifts back toward the read engines: at that ratio buntdb (1,200,000), pogreb (1,154,000), and pebble (895,000) lead, and tamnd/kv recovers to 207,000.
-The more updates in the mix, the worse tamnd/kv does.
+If your mix is actually 95% reads and 5% updates rather than 50/50 (the YCSB-B profile), tamnd/kv pulls further ahead, to 7,808,000 ops/sec against 588,000 for pebble, because there are fewer writes to spill and almost all the traffic is the index probe it is fastest at.

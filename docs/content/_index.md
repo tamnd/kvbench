@@ -14,8 +14,7 @@ Almost every embedded one is fast enough until your workload finds the thing it 
 kvbench exists to find that thing before production does.
 
 Every engine here runs through the same loader, the same clock, and the same latency histogram, so the only difference between two numbers is the engine.
-The numbers on this site come from four machines: an Apple M4 laptop and three Linux servers (4, 6, and 8 cores).
-Unless a table says otherwise, the headline figure is the Apple M4.
+The numbers on this site are from an Apple M4 laptop (10 cores, 24 GB); a cross-machine re-run under the current methodology is pending, so only the M4 figures are published rather than a stale multi-host table.
 
 ## Which engine should I use?
 
@@ -24,8 +23,8 @@ Start from what your workload does most, then read the scenario page for the rea
 | If your workload is mostly... | Reach for | Why |
 | --- | --- | --- |
 | [Reading keys you already wrote](/scenarios/read-heavy/) | **tamnd/kv**, pogreb, buntdb | Point reads at 4-7 million per second |
-| [Writing a firehose of new keys](/scenarios/write-ingest/) | **pebble**, badger, buntdb | LSM engines absorb writes without rewriting a tree |
-| [A 50/50 read-update mix](/scenarios/mixed/) | **buntdb**, badger, pebble | They keep updates cheap as the dataset churns |
+| [Writing a firehose of new keys](/scenarios/write-ingest/) | **tamnd/kv**, badger, pebble | The hot tier absorbs a write at memory speed, then spills in the background |
+| [A 50/50 read-update mix](/scenarios/mixed/) | **tamnd/kv**, pebble, badger | The hot tier absorbs updates as fast as fresh writes |
 | [Durable writes that survive a crash](/scenarios/durable-writes/) | **badger**, **sqlite** | They batch many commits into one disk flush |
 | [Scanning keys in order](/scenarios/range-scans/) | **bbolt**, pebble, goleveldb | B-trees and LSMs keep keys sorted on disk |
 | [Smallest disk footprint](/scenarios/footprint/) | **goleveldb**, pebble | LSM compression packs 1 KB values below their raw size |
@@ -37,8 +36,8 @@ Every engine wins somewhere and loses somewhere, and the [scenarios](/scenarios/
 
 | Engine | Shape | Best at | Watch out for |
 | --- | --- | --- | --- |
-| [tamnd/kv](/engines/tamnd-kv/) | hash-log | Point reads (fastest measured) | No ordered scan, hot-key updates churn |
-| [badger](/engines/badger/) | LSM | Writes plus durable batching | Uses 22x the raw data on disk |
+| [tamnd/kv](/engines/tamnd-kv/) | hash-log | Point reads and writes (fastest measured) | No ordered scan, uniform reads past cache |
+| [badger](/engines/badger/) | LSM | Writes plus durable batching | Uses 7x the raw data on disk until GC catches up |
 | [pebble](/engines/pebble/) | LSM | Writes that scale across cores, tiny on disk | Point reads trail the hash engines |
 | [bbolt](/engines/bbolt/) | B+tree | Ordered scans, dead-simple file | Random writes are slow |
 | [buntdb](/engines/buntdb/) | in-memory B-tree | Fast at everything that fits in RAM | The whole dataset lives in memory |
@@ -54,7 +53,7 @@ Three things decide which engine fits, and this site reports all three:
 
 - **Throughput** is operations per second, sustained over the whole measured window, not a warm-up burst.
 - **Tail latency** is the p99: 99 out of 100 operations finish faster than this. A good average with a bad p99 means occasional long stalls.
-- **Durability** is whether a write survives a crash. We run every engine two ways: with the disk flush off (raw speed) and with a flush on every commit (the real cost of durability). The two are never mixed in one table.
+- **Durability** is whether a write survives a crash. We run every engine two ways: at its own shipped default (DEFAULT, where the background engines flush on a short timer) and with a flush on every commit (FULL, the real cost of zero-loss durability). The two are never mixed in one table.
 
 If any of those terms are new, the [start here](/start/) page explains them in plain language before you read a single table.
 
