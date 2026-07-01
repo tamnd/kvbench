@@ -23,6 +23,12 @@ builds:
     goarch:
       - amd64
       - arm64
+    # pogreb's Windows mmap path sizes a fixed array for a 64-bit address space
+    # and does not compile on windows/arm64, so drop that one target rather than
+    # the whole release. Every other os/arch pair still ships.
+    ignore:
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -s -w
     flags:
