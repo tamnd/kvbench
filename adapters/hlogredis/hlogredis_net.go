@@ -15,7 +15,7 @@
 // hlog does not speak the redis flag dialect, so it carries its own ArgsFn rather
 // than RedisDialectArgs. The hlog-server binary must be on PATH; build it from
 // tamnd/kv with `go build -o hlog-server ./cmd/hlog-server`. It takes the cell's
-// cardinality and value size as sizing hints so the served store is the same
+// value size and cache budget as sizing hints so the served store is the same
 // shape as the embedded one, and maps the durability contract onto the engine's
 // group commit: OFF leaves the background flusher as the only durability, every
 // other level makes the harness Flush a real Sync barrier.
@@ -41,11 +41,12 @@ func init() {
 			ArgsFn: func(cfg engine.Config, sock string) []string {
 				// The store lives under the cell directory; hlog-server creates it if it
 				// is missing. The sizing hints mirror the in-process adapter so the served
-				// store is the same shape rather than a differently tuned second instance.
+				// store is the same shape rather than a differently tuned second instance;
+				// the value size sizes the hot segment index and the cache budget sizes the
+				// resident cold window, and the server defaults its key index capacity.
 				args := []string{
 					"--unixsocket", sock,
 					"--dir", cfg.Dir,
-					"--cardinality", strconv.FormatUint(cfg.Cardinality, 10),
 					"--value-bytes", strconv.Itoa(cfg.ValueBytes),
 					"--cache-bytes", strconv.FormatInt(cfg.CacheBytes, 10),
 				}
