@@ -106,7 +106,7 @@ jobs:
           ./bin/kvbench run \
             --engines lmdb,libmdbx,rocksdb,kv-f2-durable \
             --workloads readrandom,fillrandom \
-            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --durability DEFAULT --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/cgo-smoke
       - name: compile-check (speedb_engines)
         env:
@@ -159,7 +159,7 @@ jobs:
           ./bin/kvbench run \
             --engines redis \
             --workloads readrandom,fillrandom \
-            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --durability DEFAULT --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/network-smoke
 
   # End-to-end smoke: build the runner and drive a tiny sweep over the in-memory
@@ -183,7 +183,7 @@ jobs:
           ./bin/kvbench run \
             --engines devnull,swiss,otter,faster,kv,kv-f2,kv-f2-durable \
             --workloads readrandom,fillrandom \
-            --durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+            --durability DEFAULT --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
             --out results/smoke
 
   # golangci-lint bundles staticcheck, govet, ineffassign, errcheck, unused and

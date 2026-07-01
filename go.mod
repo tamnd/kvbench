@@ -11,7 +11,7 @@ require (
 	github.com/linxGnu/grocksdb v1.10.8
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/syndtr/goleveldb v1.0.0
-	github.com/tamnd/kv v0.2.1-0.20260629173905-a4ffdb637cad
+	github.com/tamnd/kv v0.3.2-0.20260701033946-ae6bb6ba1b74
 	github.com/tidwall/buntdb v1.3.2
 	go.etcd.io/bbolt v1.4.3
 	modernc.org/sqlite v1.52.0
