@@ -52,12 +52,13 @@ The [durable-writes scenario](/scenarios/durable-writes/) is built entirely on t
 - **Latency** is reported as the p99 (and the full distribution in the raw results), measured open-loop at a steady arrival rate so a stall lands in the tail instead of hiding behind the next request.
 - **Space amplification** is on-disk bytes divided by logical data bytes, after the workload.
 
-## What this site does not show
+## Classes are never mixed
 
-kvbench can also measure engines reached through cgo (RocksDB, LMDB, libmdbx), Rust stores over a subprocess, and the Redis-compatible network servers (Redis, Valkey, Dragonfly, and others).
-Those run in separate comparison classes, because an in-process `get` and a `get` over a network socket are not the same measurement and should never share a table.
+An in-process `get` and a `get` over a network socket are not the same measurement, so kvbench keeps them in separate comparison classes that never share a table.
 
-This site focuses on the eight embedded, pure-Go engines, the ones you add with `go get` and run in your own process, because that is the choice most Go developers are actually making.
+Most of this site is the embedded class: the eight pure-Go engines you add with `go get` and run in your own process, because that is the choice most Go developers are actually making.
+The Redis-compatible servers (Redis, Valkey, aki, and kv's own wire face) are their own class, measured over a socket at everysec durability on the [Redis-compatible page](/scenarios/redis-compatible/), where the network round-trip is in every number.
+kvbench can also drive engines reached through cgo (RocksDB, LMDB, libmdbx) and Rust stores over a subprocess; those are built behind their own tags and are not on the published board yet.
 
 It also leaves out the internal reference rails the harness carries for its own validation (an in-memory ceiling and a do-nothing floor).
 They are useful for checking the harness against itself, and they are not shippable stores, so they never appear on the board.
