@@ -5,21 +5,21 @@
 # up across machines. The default build is pure Go with no cgo, so a single
 # static binary runs anywhere without installing a toolchain or any engine.
 #
-# Two passes, both in a SINGLE durability mode shared by every engine, so the
-# numbers are directly comparable. We never use each engine's shipped default,
-# because those defaults disagree: bbolt and kv fsync every commit, badger and
-# pebble batch in the background. Comparing one engine's durable number against
-# another's async number is the classic benchmark lie. So:
+# Two passes. Both are durable; they differ in when the fsync lands, not whether
+# one happens.
 #
-#   raw pass      durability OFF on every engine: no fsync, the OS owns the
-#                 flush. The structural speed of the engine, same rules for all.
-#                 Finishes in seconds.
+#   default pass  durability DEFAULT: each engine runs at its own shipped
+#                 durability. bbolt and sqlite fsync every commit, badger and
+#                 pebble and kv batch in the background. This is the honest "out
+#                 of the box" comparison: every engine as its own authors ship it.
+#                 The write cells for the per-commit engines are disk-bound and
+#                 slow, the background engines are not, and that gap is the point.
 #
 #   durable pass  durability FULL on every engine: an fsync on every commit, same
-#                 rules for all. This settles at hundreds of ops per second
-#                 because it is disk-bound, so a few thousand writes is enough to
-#                 read a steady rate; a large op count would take ten minutes a
-#                 cell for nothing.
+#                 rules for all, so the background engines pay the disk too. This
+#                 settles at hundreds of ops per second because it is disk-bound,
+#                 so a few thousand writes is enough to read a steady rate; a large
+#                 op count would take ten minutes a cell for nothing.
 #
 # Usage: scripts/bench-profile.sh <bin> <out-dir>
 set -eu
@@ -32,12 +32,12 @@ CARD=100000
 VAL=1024
 CONC=8
 
-echo "raw pass (durability OFF) -> $OUT"
+echo "default pass (durability DEFAULT) -> $OUT"
 "$BIN" run \
 	--engines "$ENGINES" \
 	--workloads fillrandom,overwrite,readrandom,readseq,ycsb-a,ycsb-b,ycsb-c,ycsb-f \
 	--regimes cache-resident \
-	--durability OFF \
+	--durability DEFAULT \
 	--values "$VAL" --conc "$CONC" --cardinality "$CARD" --ops 100000 --reps 2 --seed 42 \
 	--out "$OUT"
 

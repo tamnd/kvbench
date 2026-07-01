@@ -49,7 +49,7 @@ smoke: bin/kvbench
 	./bin/kvbench run \
 		--engines kv,bbolt,pebble,badger \
 		--workloads readrandom,fillrandom \
-		--durability OFF --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
+		--durability DEFAULT --conc 1 --cardinality 5000 --ops 10000 --reps 1 \
 		--out results/smoke
 
 # The portable public profile: the same matrix every host runs, in a single
