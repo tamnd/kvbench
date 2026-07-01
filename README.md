@@ -13,7 +13,8 @@ That site is scenario-first: name what your workload does most (read-heavy, writ
 This README is for running the benchmark yourself.
 
 tamnd/kv (Spec 2059) is one adapter among many here, with no special treatment.
-It is measured as its hlog storage core, a sharded resident hash index over a hybrid log with an in-memory hot tier and a cold tail spilled to one file, and it runs through the same in-process path as every other embedded engine.
+It is measured as its hash-log storage core, a sharded resident hash index over a hybrid log with an in-memory hot tier and a cold tail spilled to one file, and it runs through the same in-process path as every other embedded engine.
+The same core also has a Redis wire face, measured over a socket as `kv-redis` in the network build below.
 
 ## Install
 
@@ -64,8 +65,10 @@ cp rust/target/release/kvbench-rs /usr/local/bin/
 go build -tags subprocess_engines -o kvbench ./cmd/kvbench
 ```
 
-redis, valkey, dragonfly, garnet, kvrocks, and the kv Redis faces in network mode.
+redis, valkey, dragonfly, garnet, kvrocks, and kv's own Redis face (`kv-redis`) in network mode.
 Each adapter launches its own RESP server on a per-process unix socket and drives it with go-redis, so there is no Docker and no shared port; a missing server binary marks that engine's cells unsupported rather than failing the run.
+kv's server (`go build -o kv ./cmd/kv` in tamnd/kv) speaks the redis-server flag dialect, so the adapter drives it close to the way it drives redis: `--port`, `--unixsocket`, `--dir`, `--appendonly` and `--appendfsync` carry their redis meaning, plus two kv sizing hints (`--value-bytes`, `--cardinality`).
+Like every RESP server on the board it is measured at `appendfsync everysec`, the production default for a networked store; the per-commit durable comparison lives on the embedded class.
 
 ```
 go build -tags network_engines -o kvbench ./cmd/kvbench
@@ -110,7 +113,7 @@ The same durability word means different things to different engines: bbolt fsyn
 Comparing one engine's per-commit number against another's background number is the classic benchmark lie, so the axis is explicit and every result carries the regime it ran under.
 
 - `--durability DEFAULT` runs each engine at its own shipped durability, the honest out-of-the-box comparison, every engine exactly as its authors ship it. This is not durability off: the background engines still flush, just on a short timer with a bounded sub-second loss window, the same contract as Redis appendfsync everysec.
-- `--durability FULL` forces a per-commit fsync on every engine, so the background engines pay the disk on every write too. This is the real cost of zero-loss durability, measured on one footing.
+- `--durability FULL` forces a per-commit fsync on every embedded engine, so the background engines pay the disk on every write too. This is the real cost of zero-loss durability, measured on one footing. It applies to the embedded class only: the networked RESP servers are always measured at everysec, because a per-commit fsync over a socket is a mode nobody deploys (redis itself calls `appendfsync always` prohibitively slow), so a FULL cell for a networked engine is skipped rather than run under a mislabeled number.
 
 A DEFAULT number and a FULL number never share a table.
 That, and the per-engine asterisks that ride along in every result, are what keep a number honest.

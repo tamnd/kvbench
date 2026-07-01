@@ -23,7 +23,6 @@ import (
 	_ "github.com/tamnd/kvbench/adapters/badger"
 	_ "github.com/tamnd/kvbench/adapters/bbolt"
 	_ "github.com/tamnd/kvbench/adapters/buntdb"
-	_ "github.com/tamnd/kvbench/adapters/f2"
 	_ "github.com/tamnd/kvbench/adapters/goleveldb"
 	_ "github.com/tamnd/kvbench/adapters/inmem"
 	_ "github.com/tamnd/kvbench/adapters/kv"
@@ -72,8 +71,10 @@ run flags:
   --regimes a,b     cache-resident,out-of-cache (default: cache-resident)
   --durability a,b  DEFAULT,FULL (default: DEFAULT). DEFAULT is each engine as it
                     ships, its own background durability; FULL forces per-commit
-                    fsync on every engine. Both are durable, they differ in when
-                    the fsync lands, not whether one happens.
+                    fsync on every embedded engine. Both are durable, they differ
+                    in when the fsync lands, not whether one happens. FULL is the
+                    embedded class only: networked RESP servers always run everysec,
+                    so a FULL cell for one is skipped, not run mislabeled.
   --values a,b      value sizes in bytes (default: 1024)
   --conc a,b        concurrency levels (default: 8)
   --cardinality N   keys to load (default: 100000)

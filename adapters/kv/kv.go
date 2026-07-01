@@ -2,10 +2,10 @@
 // benchmark exists to keep honest. kv's storage core is a hot/cold hash-log: a mostly
 // lock-free sharded hash index over a hybrid log, with the working set held in an
 // in-memory hot tier and the cold tail spilled to one file, so a get is a hash and a
-// read rather than a tree descent and the database can run far larger than memory. The
-// core is exposed directly as the hlog engine (github.com/tamnd/kv/hlog), and that is
-// what this cell measures: a point write in, a point read out, through the same small
-// Set/Get/Delete surface every other embedded store here is driven through.
+// read rather than a tree descent and the database can run far larger than memory. That
+// core is the whole of the root github.com/tamnd/kv package, and that is what this cell
+// measures: a point write in, a point read out, through the same small Set/Get/Delete
+// surface every other embedded store here is driven through.
 //
 // kv is pure Go with no cgo and keeps its data in one file plus a small commit-watermark
 // sidecar, so it sits in the single-file embedded class alongside bbolt and lmdb. It is
@@ -29,7 +29,7 @@ package kv
 import (
 	"context"
 
-	"github.com/tamnd/kv/hlog"
+	kvlib "github.com/tamnd/kv"
 	"github.com/tamnd/kvbench/engine"
 )
 
@@ -38,7 +38,7 @@ func init() {
 }
 
 type eng struct {
-	db   *hlog.TieredDB
+	db   *kvlib.DB
 	sync bool // whether the harness Flush step forces a durability barrier
 }
 
@@ -46,14 +46,14 @@ func (e *eng) Meta() engine.Meta {
 	return engine.Meta{
 		Name: "kv", Family: engine.FamilyHashLog, Mode: engine.ModeInProc,
 		Class:   engine.ClassEmbedded,
-		Version: "hlog",
+		Version: "kv",
 		Caps: engine.Capabilities{
 			Ordered: false, AtomicBatch: false, Durable: true,
 			SingleFile: true, PureNoCgo: true,
 		},
 		Asterisks: []engine.Asterisk{
 			{Code: "group-commit", Note: "durable in both modes, the difference is only when the fsync lands. DEFAULT is background group commit: a write acks from the in-memory hot tier and the flusher fsyncs it a moment later, so a crash loses only the sub-second unflushed tail, at most two segments, the Redis appendfsync-everysec contract. FULL waits for the group-commit fsync before the write returns, so an acked write survives a crash with zero loss, and concurrent writers coalesce onto one shared fsync rather than paying one each. Neither mode is durability off."},
-			{Code: "no-mvcc", Note: "this cell measures kv's bare hash-log storage core through its Set/Get/Delete surface, the durable peer to bbolt and badger's point path, not the full transactional shell."},
+			{Code: "no-mvcc", Note: "this cell measures kv's bare hash-log storage core through its Set/Get/Delete surface, the durable peer to bbolt and badger's point path, with no transaction type."},
 			{Code: "unordered", Note: "the index is a hash table with no key order, so there is no sorted scan; range and scan workloads (readseq, ycsb-e) do not apply and are skipped."},
 		},
 	}
@@ -91,7 +91,7 @@ func (e *eng) Open(_ context.Context, cfg engine.Config) error {
 	// delay: the write acks from the hot tier and the flusher fsyncs it a moment later, the Redis
 	// everysec contract. Two flush granularities, both durable, not on and off.
 	syncWrites := cfg.Synchronous == "FULL"
-	opts := hlog.Options{
+	opts := kvlib.Options{
 		KeyCapacity:    int(cfg.Cardinality),
 		HotBytes:       hotBytes,
 		HotKeys:        hotRecords + hotRecords/4,
@@ -99,7 +99,7 @@ func (e *eng) Open(_ context.Context, cfg engine.Config) error {
 		ReadCacheCells: 4096,
 		SyncWrites:     syncWrites,
 	}
-	db, err := hlog.Open(cfg.Dir+"/data.kv", opts)
+	db, err := kvlib.Open(cfg.Dir+"/data.kv", opts)
 	if err != nil {
 		return err
 	}

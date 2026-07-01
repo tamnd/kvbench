@@ -86,6 +86,22 @@ func RunCell(ctx context.Context, c CellConfig) Result {
 		return r
 	}
 
+	// FULL forces a per-commit fsync. That is a real production comparison for the
+	// embedded class, where people do run bbolt or sqlite synchronous=FULL, so the
+	// durable-writes scenario measures it there. Over a network hop nobody runs it:
+	// the round-trip already dominates and a per-commit fsync on top of it is a mode
+	// no one deploys, which is why redis itself defaults to everysec and calls
+	// appendfsync always prohibitively slow. So the RESP and distributed classes are
+	// a DEFAULT (everysec) comparison only, and a FULL cell for a networked engine is
+	// skipped rather than run under a number that would be everysec wearing a FULL label.
+	if c.Durability == "FULL" {
+		switch engine.ClassOf(meta) {
+		case engine.ClassRedisMemory, engine.ClassRedisPersistent, engine.ClassDistributed:
+			r.Error = "unsupported: FULL per-commit fsync is not measured over the network; the RESP class runs everysec (DEFAULT)"
+			return r
+		}
+	}
+
 	dir := filepath.Join(c.DataRoot, c.RunID, c.EngineName+"_"+c.Workload.Name+"_"+c.Regime)
 	_ = os.RemoveAll(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
